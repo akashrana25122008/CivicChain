@@ -4,11 +4,11 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { Navigation } from '@/components/layout/Navigation';
 
 export const metadata: Metadata = {
-  title: 'Sign In',
-  description: 'Sign in to CivicChain with your email.',
+  title: 'Create Account',
+  description: 'Create your CivicChain citizen account with a magic link.',
 };
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-white dark:bg-dark-bg">
       <Navigation />
@@ -16,20 +16,21 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <h1 className="font-display text-3xl font-bold text-neutral-900 dark:text-white mb-2">
-              Sign in to CivicChain
+              Create your CivicChain account
             </h1>
             <p className="text-neutral-600 dark:text-neutral-400">
-              Passwordless access via a secure magic link sent to your email.
+              Passwordless. Enter your email — the first sign-in creates your
+              CITIZEN account automatically.
             </p>
           </div>
-          <LoginForm />
+          <LoginForm mode="register" />
           <p className="mt-6 text-center text-sm text-neutral-500">
-            New to CivicChain?{' '}
+            Already have an account?{' '}
             <Link
-              href="/register"
+              href="/login"
               className="font-medium text-brand-600 dark:text-brand-400 hover:underline"
             >
-              Create an account
+              Sign in
             </Link>
           </p>
         </div>

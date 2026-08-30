@@ -6,9 +6,9 @@ import { signIn } from 'next-auth/react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { Mail, Loader2, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Mail, CheckCircle2, ShieldCheck } from 'lucide-react';
 
-export function LoginForm() {
+export function LoginForm({ mode = 'login' }: { mode?: 'login' | 'register' }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
@@ -65,10 +65,11 @@ export function LoginForm() {
             Check your inbox
           </h2>
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-1">
-            A sign-in link was sent to <span className="font-medium text-neutral-900 dark:text-white">{email}</span>.
+            A {mode === 'register' ? 'verification' : 'sign-in'} link was sent to{' '}
+            <span className="font-medium text-neutral-900 dark:text-white">{email}</span>.
           </p>
           <p className="text-xs text-neutral-500">
-            The link expires shortly. No account? One is created automatically on first sign-in.
+            The link expires shortly. {mode === 'register' ? 'First sign-in creates your CITIZEN account automatically.' : 'No account? One is created automatically on first sign-in.'}
           </p>
 
           {devLink && (
@@ -130,7 +131,11 @@ export function LoginForm() {
             </p>
           )}
           <Button type="submit" size="lg" fullWidth loading={loading}>
-            {loading ? 'Sending link…' : 'Send Magic Link'}
+            {loading
+              ? 'Sending link…'
+              : mode === 'register'
+                ? 'Create my account — send magic link'
+                : 'Send Magic Link'}
           </Button>
         </form>
       </CardContent>
