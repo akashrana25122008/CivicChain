@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Playfair_Display, DM_Sans, JetBrains_Mono } from 'next/font/google';
+import { SessionProvider } from '@/components/providers/SessionProvider';
+import { auth } from '@/lib/auth/auth';
 import './globals.css';
 
 const playfair = Playfair_Display({
@@ -59,11 +61,12 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
   return (
     <html
       lang="en"
@@ -75,7 +78,9 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="min-h-full flex flex-col bg-white dark:bg-dark-bg text-neutral-900 dark:text-neutral-100">
-        {children}
+        <SessionProvider session={session?.user ? { user: { id: session.user.id, role: session.user.role } } : null}>
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );

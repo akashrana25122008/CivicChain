@@ -55,6 +55,7 @@ export function getStatusColor(status: string): string {
     resolved: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/30 dark:border-emerald-800',
     partiallyResolved: 'text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/30 dark:border-amber-800',
     brokenPromise: 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/30 dark:border-red-800',
+    rejected: 'text-neutral-600 bg-neutral-100 border-neutral-200 dark:text-neutral-400 dark:bg-neutral-800 dark:border-neutral-700',
   };
   return statusColors[status] || statusColors.active;
 }

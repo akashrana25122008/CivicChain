@@ -1,0 +1,401 @@
+// CivicChain — Phase 1 database schema
+// PostgreSQL + PostGIS + Prisma ORM (v7, prisma-client generator).
+//
+// Conventions:
+//   - IDs: cuid() strings (server-generated, never client-supplied).
+//   - Coordinates: latitude/longitude stored as nullable Double columns.
+//     A PostGIS geography(Point,4326) column is added by raw SQL in the
+//     initial migration (see prisma/migrations/.../migration.sql — "PostGIS").
+//   - Sensitive identity is always derived from the authenticated session;
+//     no browser-supplied userId/role is ever trusted.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Connection URLs now live in prisma.config.ts (Prisma 7).
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  CITIZEN
+  AUTHORITY
+  ADMIN
+}
+
+enum IssueCategory {
+  POTHOLE
+  DRAINAGE
+  STREETLIGHT
+  GARBAGE
+  INFRASTRUCTURE
+  WATER
+  OTHER
+}
+
+// Authoritative lifecycle. Display statuses shown in the UI are derived
+// server-side (see src/lib/issues/status.ts).
+enum IssueStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  VERIFIED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EvidenceType {
+  IMAGE
+  VIDEO
+  URL
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum EscalationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum PromiseStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  BROKEN
+}
+
+enum AuditAction {
+  REPORT_CREATED
+  REPORT_UPDATED
+  STATUS_CHANGED
+  EVIDENCE_ADDED
+  VERIFICATION_CREATED
+  ESCALATION_CREATED
+  AUTHORITY_ASSIGNED
+}
+
+enum NotificationType {
+  REPORT_CREATED
+  STATUS_CHANGED
+  EVIDENCE_ADDED
+  VERIFICATION_CREATED
+  ESCALATION_CREATED
+  AUTHORITY_ASSIGNED
+  PROMISE_DEADLINE
+  GENERAL
+}
+
+// ---------------------------------------------------------------------------
+// Identity & auth (NextAuth/Auth.js v5 + Prisma adapter)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(CITIZEN)
+  karmaScore    Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  issues         Issue[]         @relation("IssueReporter")
+  evidence       Evidence[]      @relation("EvidenceUploader")
+  verifications  Verification[]  @relation("VerificationVerifier")
+  escalations    Escalation[]    @relation("EscalationInitiator")
+  authorities    Authority[]     @relation("AuthorityUser")
+  notifications  Notification[]
+  auditLogs      AuditLog[]      @relation("AuditActor")
+  accounts       Account[]
+  sessions       Session[]
+  authenticators Authenticator[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Authenticator {
+  credentialID         String  @unique
+  userId               String
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+}
+
+// ---------------------------------------------------------------------------
+// Civic domain
+// ---------------------------------------------------------------------------
+
+model Authority {
+  id          String   @id @default(cuid())
+  name        String
+  department  String
+  email       String?
+  phone       String?
+  jurisdiction String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Optional link to the user account that acts as this authority's
+  // operator (role AUTHORITY). Nullable so multiple departments can exist
+  // without requiring an operator account.
+  userId String? @unique
+  user   User?   @relation("AuthorityUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  issues      Issue[]
+  promises    Promise[]
+  escalations Escalation[]
+
+  @@index([department])
+}
+
+model Issue {
+  id          String        @id @default(cuid())
+  publicId    String        @unique // human-facing reference, e.g. CC-1092
+  title       String
+  description String?
+  category    IssueCategory
+  status      IssueStatus   @default(SUBMITTED)
+  severity    Severity?
+  priority    Int? // 0-100; null until a real scoring pipeline exists
+  latitude    Float? // stored for PostGIS
+  longitude   Float? // stored for PostGIS
+  location    String? // free-text address / landmark / ward
+  contact     String? // reporter follow-up contact (confidential)
+  reporterId  String
+  authorityId String?
+
+  // PostGIS point; created as a GENERATED ALWAYS AS ... geography column by
+  // raw SQL in the initial migration. Unsupported() keeps Prisma aware of the
+  // column so migrate diff does not try to drop it. GIST index also raw SQL.
+  geoLocation Unsupported("geography(Point,4326)")?
+
+  reporter  User?      @relation("IssueReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  authority Authority? @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+
+  evidence     Evidence[]
+  verifications Verification[]
+  escalations  Escalation[]
+  auditLogs    AuditLog[]
+  notifications Notification[]
+  promise      Promise?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reporterId])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@index([authorityId])
+  @@index([latitude, longitude])
+  @@index([geoLocation], type: Gist, map: "issue_geoLocation_idx")
+}
+
+model Evidence {
+  id           String       @id @default(cuid())
+  issueId      String
+  type         EvidenceType
+  url          String // stored file reference (dev: /uploads/...; later: object storage)
+  fileName     String?
+  mimeType     String?
+  sizeBytes    Int?
+  metadata     Json?
+  uploadedById String?
+
+  issue   Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  uploader User? @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  verifications Verification[]
+
+  createdAt DateTime @default(now())
+
+  @@index([issueId])
+  @@index([uploadedById])
+}
+
+model Promise {
+  id          String        @id @default(cuid())
+  issueId     String        @unique
+  authorityId String?
+  deadline    DateTime
+  status      PromiseStatus @default(OPEN)
+  description String?
+
+  issue     Issue?     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  authority Authority? @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorityId])
+  @@index([status])
+  @@index([deadline])
+}
+
+model Verification {
+  id          String             @id @default(cuid())
+  issueId     String
+  verifierId  String?
+  evidenceId  String?
+  status      VerificationStatus @default(PENDING)
+  note        String?
+
+  issue    Issue?     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  verifier User?      @relation("VerificationVerifier", fields: [verifierId], references: [id], onDelete: SetNull)
+  evidence Evidence?  @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([issueId])
+  @@index([verifierId])
+  @@index([evidenceId])
+}
+
+model Escalation {
+  id          String           @id @default(cuid())
+  issueId     String
+  callerId    String?
+  authorityId String?
+  level       Int              @default(1)
+  status      EscalationStatus @default(OPEN)
+  reason      String?
+
+  issue     Issue?     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  caller    User?      @relation("EscalationInitiator", fields: [callerId], references: [id], onDelete: SetNull)
+  authority Authority? @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([issueId])
+  @@index([status])
+  @@index([level])
+}
+
+// ---------------------------------------------------------------------------
+// Observability & messaging
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String?
+  issueId    String?
+  action     AuditAction
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([issueId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  issueId   String?
+  type      NotificationType
+  title     String
+  message   String?
+  read      Boolean          @default(false)
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([issueId])
+}
+
+// ---------------------------------------------------------------------------
+// Internals
+// ---------------------------------------------------------------------------
+
+// Single-row counter used to mint sequential, human-facing public IDs
+// (CC-xxxx). Updated atomically inside the report-creation transaction.
+model RefCounter {
+  id    Int @id
+  value Int @default(1090)
+}
+
+// ---------------------------------------------------------------------------
+// Future models (NOT implemented in Phase 1) — architecturally anticipated:
+//   CivicKarma      -> extends User.karmaScore into a full model (Phase 3)
+//   RiskPrediction  -> per-ward predictive risk records (Phase 2/3)
+//   IncidentCluster -> geospatial incident clustering (Phase 2/3)
+// They are deliberately absent so the schema stays minimal and migration-safe.
+// ---------------------------------------------------------------------------

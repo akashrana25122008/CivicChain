@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prisma generated client
+/generated
+
+# citizen evidence uploads (local disk storage in dev)
+/public/uploads
