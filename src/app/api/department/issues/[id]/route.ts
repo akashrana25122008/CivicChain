@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { handleApiError, notFound, forbidden } from '@/lib/server/api';
 import { requireUser } from '@/lib/server/session';
+import { requireOwnAuthority, authorityOwnsIssue } from '@/lib/server/dept';
 import { serializeIssueDetail } from '@/lib/issues/serialize';
 import { prisma } from '@/lib/db';
 
@@ -8,9 +9,10 @@ export interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-const ISSUE_INCLUDE = {
+const DETAIL_INCLUDE = {
   authority: true,
   promise: true,
+  reporter: { select: { name: true, email: true } },
   evidence: {
     orderBy: { createdAt: 'asc' as const },
     include: {
@@ -23,19 +25,17 @@ const ISSUE_INCLUDE = {
   auditLogs: { orderBy: { createdAt: 'asc' as const } },
 } as const;
 
-/**
- * Owner-only detail view (ADMIN may inspect). Primary identity check is
- * reporterId in the database versus the authenticated session user.
- */
-export async function GET(_req: Request, ctx: RouteContext) {
+/** Department-scoped issue detail: visible only to the authority owning the issue. */
+export async function GET(_req: NextRequest, ctx: RouteContext) {
   try {
-    const viewer = await requireUser();
+    const user = await requireUser();
+    const authority = await requireOwnAuthority(user);
     const { id } = await ctx.params;
-    const issue = await prisma.issue.findUnique({ where: { id }, include: ISSUE_INCLUDE });
+
+    const issue = await prisma.issue.findUnique({ where: { id }, include: DETAIL_INCLUDE });
     if (!issue) throw notFound('Report');
-    if (issue.reporterId !== viewer.id && viewer.role !== 'ADMIN') {
-      throw forbidden();
-    }
+    if (!authorityOwnsIssue(authority, issue.authorityId)) throw forbidden();
+
     return NextResponse.json({
       issue: serializeIssueDetail({
         issue,
@@ -43,7 +43,8 @@ export async function GET(_req: Request, ctx: RouteContext) {
         promise: issue.promise,
         evidence: issue.evidence,
         auditLogs: issue.auditLogs,
-        viewerId: viewer.id,
+        viewerId: user.id,
+        reporter: issue.reporter,
       }),
     });
   } catch (error) {

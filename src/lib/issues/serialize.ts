@@ -15,22 +15,36 @@ import {
 } from '../../../generated/prisma/client';
 import type {
   EvidenceItem,
+  EvidenceQueueItem,
+  EvidenceVerification,
   IssueDetail,
   IssueListItem,
   TimelineItem,
 } from './types';
 
+/** Evidence row optionally loaded with its full verification history. */
+type EvidenceWithVerifications = Evidence & {
+  verifications?: Array<{
+    id: string;
+    status: string;
+    note: string | null;
+    createdAt: Date;
+    verifier?: { name: string | null; email: string } | null;
+  }>;
+};
+
 interface IssueRowInput {
   issue: Issue;
   authority?: Authority | null;
   promise?: CivicPromise | null;
-  evidence?: Evidence[];
+  evidence?: EvidenceWithVerifications[];
   auditLogs?: AuditLog[];
   viewerId?: string | null;
+  reporter?: { name: string | null; email: string } | null;
 }
 
 export function serializeIssueListRow(input: IssueRowInput): IssueListItem {
-  const { issue, authority, promise, viewerId } = input;
+  const { issue, authority, promise, viewerId, reporter } = input;
   const severity = issue.severity;
   return {
     id: issue.id,
@@ -54,6 +68,9 @@ export function serializeIssueListRow(input: IssueRowInput): IssueListItem {
     timeLabel: formatRelativeTime(issue.createdAt),
     byCurrentUser: viewerId ? issue.reporterId === viewerId : false,
     hasLocation: issue.latitude !== null && issue.longitude !== null,
+    latitude: issue.latitude,
+    longitude: issue.longitude,
+    reporterName: reporter?.name ?? reporter?.email ?? null,
   };
 }
 
@@ -79,10 +96,24 @@ function toTimeline(auditLogs: AuditLog[] | undefined): TimelineItem[] {
     }));
 }
 
-export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
-  const row = serializeIssueListRow(input);
-  const { issue, evidence } = input;
-  const evidenceItems: EvidenceItem[] = (evidence ?? []).map((ev) => ({
+/** Latest recorded verification for an evidence item (most recent first). */
+function latestVerification(ev: EvidenceWithVerifications): EvidenceVerification | null {
+  const list = ev.verifications ?? [];
+  if (list.length === 0) return null;
+  const latest = list.reduce((a, b) =>
+    b.createdAt.getTime() > a.createdAt.getTime() ? b : a,
+  );
+  return {
+    id: latest.id,
+    status: latest.status,
+    note: latest.note ?? null,
+    verifierName: latest.verifier?.name ?? latest.verifier?.email ?? null,
+    createdAt: latest.createdAt.toISOString(),
+  };
+}
+
+function toEvidenceItem(ev: EvidenceWithVerifications): EvidenceItem {
+  return {
     id: ev.id,
     type: ev.type,
     url: ev.url,
@@ -90,14 +121,34 @@ export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
     mimeType: ev.mimeType,
     sizeBytes: ev.sizeBytes,
     createdAt: ev.createdAt.toISOString(),
-  }));
+    verification: latestVerification(ev),
+  };
+}
+
+/** Evidence row flattened with its owning issue for staff verification queues. */
+export function serializeEvidenceQueueItem(
+  ev: EvidenceWithVerifications,
+  issue: Pick<Issue, 'id' | 'publicId' | 'title' | 'status'>,
+): EvidenceQueueItem {
+  return {
+    ...toEvidenceItem(ev),
+    issueId: issue.id,
+    issuePublicId: issue.publicId,
+    issueTitle: issue.title,
+    issueStatus: issue.status,
+  };
+}
+
+export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
+  const row = serializeIssueListRow(input);
+  const { issue, evidence } = input;
   return {
     ...row,
     description: issue.description,
     latitude: issue.latitude,
     longitude: issue.longitude,
     contact: issue.contact,
-    evidence: evidenceItems,
+    evidence: (evidence ?? []).map(toEvidenceItem),
     timeline: toTimeline(input.auditLogs),
     aiConfidence: null, // real AI analysis arrives in Phase 2 — never fabricated
   };

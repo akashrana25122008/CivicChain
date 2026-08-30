@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { File as FormFile } from 'node:buffer';
 import { requireUser } from '@/lib/server/session';
-import { handleApiError, ApiError, badRequest, unauthorized } from '@/lib/server/api';
-import { prisma } from '@/lib/db';
-import { serializeIssueListRow } from '@/lib/issues/serialize';
+import { handleApiError, ApiError, badRequest } from '@/lib/server/api';
 import { createReport } from '@/lib/issues/create';
+import { queryIssueList } from '@/lib/issues/query';
 import { storeEvidenceFile } from '@/lib/server/storage';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -16,25 +15,20 @@ import {
 } from '@/lib/validation/report';
 import type { IssueCategory } from '../../../../generated/prisma/client';
 
-const ISSUE_INCLUDE = {
-  authority: true,
-  promise: { include: { createdBy: true } },
-} as const;
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const viewer = await requireUser();
-    const issues = await prisma.issue.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: { authority: true, promise: true },
+    const { searchParams } = request.nextUrl;
+    const result = await queryIssueList({
+      viewerId: viewer.id,
+      q: searchParams.get('q'),
+      category: searchParams.get('category'),
+      status: searchParams.get('status'),
+      sort: (searchParams.get('sort') as 'newest' | 'oldest' | 'updated') ?? 'newest',
+      page: searchParams.get('page') ? Number(searchParams.get('page')) : 1,
+      pageSize: searchParams.get('pageSize') ? Number(searchParams.get('pageSize')) : 100,
     });
-    return NextResponse.json({
-      issues: issues.map((issue) =>
-        serializeIssueListRow({ issue, authority: issue.authority, promise: issue.promise, viewerId: viewer.id }),
-      ),
-      total: issues.length,
-    });
+    return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);
   }

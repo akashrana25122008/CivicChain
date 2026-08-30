@@ -20,41 +20,54 @@ export async function proxy(request: NextRequest) {
   const api = pathname.startsWith('/api/');
   const needsAuth =
     pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/department') ||
     pathname.startsWith('/my-reports') ||
     pathname.startsWith('/admin') ||
     pathname === '/report' ||
     pathname.startsWith('/api/issues') ||
+    pathname.startsWith('/api/department') ||
     pathname.startsWith('/api/my-reports') ||
     pathname.startsWith('/api/notifications') ||
-    pathname.startsWith('/api/admin');
+    pathname.startsWith('/api/admin') ||
+    pathname.startsWith('/api/citizen');
 
   if (!needsAuth) {
     return NextResponse.next();
   }
 
+  const deny = (code: string, message: string, status: number) =>
+    api
+      ? NextResponse.json({ error: { code, message } }, { status })
+      : null;
+
   if (!token?.id) {
-    const url = request.nextUrl.clone();
     if (api) {
       return NextResponse.json(
         { error: { code: 'UNAUTHENTICATED', message: 'You must be signed in.' } },
         { status: 401 },
       );
     }
+    const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(url);
   }
 
-  const isAdminPath =
-    pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
+  const redirectHome = (role: string | undefined) => {
+    const target =
+      role === 'ADMIN' ? '/admin/dashboard' : role === 'AUTHORITY' ? '/department' : '/dashboard';
+    return NextResponse.redirect(new URL(target, request.url));
+  };
+
+  const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
   if (isAdminPath && token.role !== 'ADMIN') {
-    if (api) {
-      return NextResponse.json(
-        { error: { code: 'FORBIDDEN', message: 'Admins only.' } },
-        { status: 403 },
-      );
-    }
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return api ? deny('FORBIDDEN', 'Admins only.', 403) : redirectHome(token.role);
+  }
+
+  const isDepartmentPath =
+    pathname.startsWith('/department') || pathname.startsWith('/api/department');
+  if (isDepartmentPath && token.role !== 'AUTHORITY') {
+    return api ? deny('FORBIDDEN', 'Department access only.', 403) : redirectHome(token.role);
   }
 
   return NextResponse.next();
@@ -63,12 +76,15 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/dashboard/:path*',
+    '/department/:path*',
     '/my-reports/:path*',
     '/admin/:path*',
     '/report',
     '/api/issues/:path*',
+    '/api/department/:path*',
     '/api/my-reports/:path*',
     '/api/notifications/:path*',
     '/api/admin/:path*',
+    '/api/citizen/:path*',
   ],
 };

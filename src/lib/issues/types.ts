@@ -26,6 +26,17 @@ export interface IssueListItem {
   timeLabel: string;
   byCurrentUser: boolean;
   hasLocation: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  /** Reporter display name (only populated on staff/admin views). */
+  reporterName: string | null;
+}
+
+export interface EvidenceQueueItem extends EvidenceItem {
+  issueId: string;
+  issuePublicId: string;
+  issueTitle: string;
+  issueStatus: string;
 }
 
 export type TimelineState = 'completed' | 'current' | 'pending';
@@ -36,6 +47,14 @@ export interface TimelineItem {
   state: TimelineState;
 }
 
+export interface EvidenceVerification {
+  id: string;
+  status: string;
+  note: string | null;
+  verifierName: string | null;
+  createdAt: string;
+}
+
 export interface EvidenceItem {
   id: string;
   type: string;
@@ -44,6 +63,8 @@ export interface EvidenceItem {
   mimeType: string | null;
   sizeBytes: number | null;
   createdAt: string;
+  /** Latest recorded verification for this evidence item, if any. */
+  verification: EvidenceVerification | null;
 }
 
 export interface IssueDetail extends IssueListItem {
@@ -73,6 +94,20 @@ export interface NotificationItem {
   read: boolean;
   issueId: string | null;
   issuePublicId: string | null;
+  createdAt: string;
+  timeLabel: string;
+}
+
+export interface EscalationItem {
+  id: string;
+  issueId: string;
+  issuePublicId: string;
+  issueTitle: string;
+  issueStatus: string;
+  level: number;
+  status: string;
+  reason: string | null;
+  caller: string | null;
   createdAt: string;
   timeLabel: string;
 }

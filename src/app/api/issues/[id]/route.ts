@@ -15,7 +15,15 @@ export interface RouteContext {
 const ISSUE_INCLUDE = {
   authority: true,
   promise: true,
-  evidence: { orderBy: { createdAt: 'asc' as const } },
+  evidence: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      verifications: {
+        orderBy: { createdAt: 'desc' as const },
+        include: { verifier: { select: { name: true, email: true } } },
+      },
+    },
+  },
   auditLogs: { orderBy: { createdAt: 'asc' as const } },
 } as const;
 

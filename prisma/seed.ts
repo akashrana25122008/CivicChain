@@ -97,9 +97,10 @@ async function main() {
   console.log('[seed] Authorities ready');
 
   const existing = await prisma.issue.count();
-  if (existing > 0) {
+  if (existing === 0) {
+    console.log('[seed] Seeding demo issues on an empty database…');
+  } else {
     console.log(`[seed] ${existing} issue(s) already exist — skipping demo issues (idempotent).`);
-    return;
   }
 
   const dayMs = 24 * 60 * 60 * 1000;
@@ -184,8 +185,9 @@ async function main() {
     REJECTED: ['SUBMITTED', 'UNDER_REVIEW'],
   };
 
-  await prisma.$transaction(async (tx) => {
-    for (const [index, demo] of demoIssues.entries()) {
+  if (existing === 0) {
+    await prisma.$transaction(async (tx) => {
+      for (const [index, demo] of demoIssues.entries()) {
       const counter = await tx.refCounter.upsert({
         where: { id: 1 },
         update: { value: { increment: 1 } },
@@ -315,9 +317,99 @@ async function main() {
         read: false,
       },
     });
-  });
+    });
+  }
 
-  console.log(`[seed] Inserted ${demoIssues.length} demo issues. Reporters can sign in via magic link at their seeded email.`);
+  // Demo verification + escalation queues. Seeded idempotently (outside the
+  // issue-creation skip) so the queues have honest PENDING/OPEN demo rows even
+  // on databases where the demo issues already exist.
+  const demoEvidenceFor = async (publicId: string) =>
+    prisma.evidence.findFirst({ where: { issue: { publicId } } });
+
+  const cc1090Evidence = await demoEvidenceFor('CC-1090');
+  if (cc1090Evidence) {
+    const existing = await prisma.verification.count({ where: { evidenceId: cc1090Evidence.id } });
+    if (existing === 0) {
+      await prisma.verification.create({
+        data: {
+          issueId: cc1090Evidence.issueId,
+          verifierId: users.authority.id,
+          evidenceId: cc1090Evidence.id,
+          status: 'VERIFIED',
+          note: 'DEMO — Photo matches the reported pothole location.',
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: users.authority.id,
+          issueId: cc1090Evidence.issueId,
+          action: 'VERIFICATION_CREATED',
+          entityType: 'Evidence',
+          entityId: cc1090Evidence.id,
+          metadata: { status: 'VERIFIED', demo: true },
+        },
+      });
+    }
+  }
+
+  const cc1092Evidence = await demoEvidenceFor('CC-1092');
+  if (cc1092Evidence) {
+    const existing = await prisma.verification.count({ where: { evidenceId: cc1092Evidence.id } });
+    if (existing === 0) {
+      await prisma.verification.create({
+        data: {
+          issueId: cc1092Evidence.issueId,
+          verifierId: users.authority.id,
+          evidenceId: cc1092Evidence.id,
+          status: 'PENDING',
+          note: 'DEMO — Seeded pending verification for the development queue.',
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: users.authority.id,
+          issueId: cc1092Evidence.issueId,
+          action: 'VERIFICATION_CREATED',
+          entityType: 'Evidence',
+          entityId: cc1092Evidence.id,
+          metadata: { status: 'PENDING', demo: true },
+        },
+      });
+    }
+  }
+
+  const cc1093 = await prisma.issue.findFirst({ where: { publicId: 'CC-1093' } });
+  if (cc1093) {
+    const existing = await prisma.escalation.count({ where: { issueId: cc1093.id } });
+    if (existing === 0) {
+      await prisma.escalation.create({
+        data: {
+          issueId: cc1093.id,
+          callerId: users.ravi.id,
+          authorityId: authorities['Roads & Infrastructure Department'] ?? null,
+          level: 1,
+          status: 'OPEN',
+          reason: 'DEMO — Repeated overflow despite a broken repair promise.',
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: users.ravi.id,
+          issueId: cc1093.id,
+          action: 'ESCALATION_CREATED',
+          entityType: 'Escalation',
+          entityId: cc1093.id,
+          metadata: { level: 1, demo: true },
+        },
+      });
+    }
+  }
+
+  console.log(
+    existing === 0
+      ? `[seed] Inserted ${demoIssues.length} demo issues. Sign in via magic link at the seeded emails.`
+      : '[seed] Demo issues already present — only verification/escalation queues refreshed.',
+  );
 }
 
 main()
