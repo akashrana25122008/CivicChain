@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
 
     const result = await queryIssueList({
       viewerId: user.id,
+      revealReporter: true,
       q: sp.get('q'),
       category: sp.get('category'),
       status: sp.get('status'),

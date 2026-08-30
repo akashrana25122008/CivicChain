@@ -3,6 +3,7 @@ import { handleApiError, notFound, forbidden } from '@/lib/server/api';
 import { requireUser } from '@/lib/server/session';
 import { requireOwnAuthority, authorityOwnsIssue } from '@/lib/server/dept';
 import { serializeIssueDetail } from '@/lib/issues/serialize';
+import { allowedTransitionsFor } from '@/lib/issues/transition';
 import { prisma } from '@/lib/db';
 
 export interface RouteContext {
@@ -44,7 +45,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         evidence: issue.evidence,
         auditLogs: issue.auditLogs,
         viewerId: user.id,
+        revealReporter: true,
+        revealContact: true,
         reporter: issue.reporter,
+        allowedTransitions: await allowedTransitionsFor(user, issue),
       }),
     });
   } catch (error) {

@@ -78,7 +78,20 @@ export default async function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="min-h-full flex flex-col bg-white dark:bg-dark-bg text-neutral-900 dark:text-neutral-100">
-        <SessionProvider session={session?.user ? { user: { id: session.user.id, role: session.user.role } } : null}>
+        <SessionProvider
+          session={
+            session?.user
+              ? {
+                  user: {
+                    id: session.user.id,
+                    role: session.user.role,
+                    name: session.user.name ?? null,
+                    email: session.user.email ?? null,
+                  },
+                }
+              : null
+          }
+        >
           {children}
         </SessionProvider>
       </body>

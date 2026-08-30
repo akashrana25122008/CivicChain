@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { handleApiError, notFound } from '@/lib/server/api';
 import { requireUser } from '@/lib/server/session';
 import { serializeIssueDetail } from '@/lib/issues/serialize';
+import { allowedTransitionsFor } from '@/lib/issues/transition';
 import { patchReportHttp } from '@/lib/issues/http';
 import { prisma } from '@/lib/db';
 
@@ -45,6 +46,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         evidence: issue.evidence,
         auditLogs: issue.auditLogs,
         viewerId: viewer.id,
+        allowedTransitions: await allowedTransitionsFor(viewer, issue),
       }),
     });
   } catch (error) {

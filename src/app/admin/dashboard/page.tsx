@@ -13,12 +13,14 @@ import {
   AlertTriangle,
   History,
   ArrowRight,
+  MapPin,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/dashboard/PageHeader';
 import { StatCard } from '@/components/dashboard/StatCard';
+import { CivicMapFrame } from '@/components/dashboard/CivicMapFrame';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { ErrorState } from '@/components/dashboard/ErrorState';
 import type { AuditLogItem } from '@/lib/issues/types';
@@ -95,6 +97,27 @@ export default function AdminDashboard() {
       </div>
 
       {statsError && <ErrorState onRetry={() => mutateStats()} />}
+
+      <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle as="h2" className="text-lg flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Citywide Operations Map
+          </CardTitle>
+          <Link href="/map" className="text-xs text-brand-600 dark:text-brand-400 flex items-center gap-1">
+            Full map <ArrowRight className="w-3 h-3" />
+          </Link>
+        </CardHeader>
+        <CardContent>
+          <div className="aspect-[16/6]">
+            <CivicMapFrame
+              title="Citywide operations map"
+              location={{ queryLabel: 'Mathura, Uttar Pradesh' }}
+              zoom={11}
+              mapHref="/map"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

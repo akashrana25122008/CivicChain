@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { Navigation } from '@/components/layout/Navigation';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Card, CardContent } from '@/components/ui/Card';
-import { CATEGORY_SELECT_OPTIONS } from '@/lib/issues/mapping';
-import type { IssueDetail } from '@/lib/issues/types';
+import { CATEGORY_SELECT_OPTIONS, PRIORITY_LEVEL_LABELS } from '@/lib/issues/mapping';
+import { cn } from '@/lib/utils';
+import type { IssueDetail, DuplicateVerdictItem } from '@/lib/issues/types';
 import {
   Upload,
   MapPin,
@@ -20,6 +20,9 @@ import {
   LocateFixed,
   Crosshair,
   Brain,
+  GitMerge,
+  ShieldAlert,
+  AlertTriangle,
 } from 'lucide-react';
 
 type Step = 'form' | 'submitting' | 'result';
@@ -42,6 +45,7 @@ export default function ReportPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [issue, setIssue] = useState<IssueDetail | null>(null);
+  const [duplicate, setDuplicate] = useState<DuplicateVerdictItem>(null);
   const [gps, setGps] = useState<GpsState>({ phase: 'idle' });
   // Synchronous double-submit guard: the windowed server check is the source
   // of truth, but we must never issue two identical requests from one click.
@@ -52,7 +56,9 @@ export default function ReportPage() {
     setFiles([]);
     setError(null);
     setIssue(null);
+    setDuplicate(null);
     setGps({ phase: 'idle' });
+    setStep('form');
   };
 
   const handleUseMyLocation = () => {
@@ -110,9 +116,9 @@ export default function ReportPage() {
     files.forEach((file) => body.append('file', file));
 
     try {
-      const res = await fetch('/api/reports', { method: 'POST', body });
+      const res = await fetch('/api/issues', { method: 'POST', body });
       const data = (await res.json()) as
-        | { issue: { id: string; publicId: string } }
+        | { issue: { id: string; publicId: string }; duplicate: DuplicateVerdictItem; analysisStatus: string | null }
         | { error?: { message: string } };
 
       if (!res.ok) {
@@ -120,8 +126,11 @@ export default function ReportPage() {
         throw new Error(message);
       }
 
+      const created = data as { issue: { id: string; publicId: string }; duplicate: DuplicateVerdictItem; analysisStatus: string | null };
+      setDuplicate(created.duplicate ?? null);
+
       // Persistence check: re-fetch the created report from the database.
-      const detailRes = await fetch(`/api/reports/${(data as { issue: { id: string } }).issue.id}`);
+      const detailRes = await fetch(`/api/issues/${created.issue.id}`);
       if (detailRes.ok) {
         const detail = (await detailRes.json()) as { issue: IssueDetail };
         setIssue(detail.issue);
@@ -129,6 +138,7 @@ export default function ReportPage() {
         setIssue(null);
       }
 
+      pollsRef.current = 0;
       setStep('result');
     } catch (err) {
       submittingRef.current = false;
@@ -137,13 +147,41 @@ export default function ReportPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-white dark:bg-dark-bg">
-      <Navigation />
+  // While the server-side AI pipeline is still running (PENDING/PROCESSING),
+  // poll the persisted report so the result view converges on the real outcome.
+  // Each read also self-heals the run via ensureReportIntelligence.
+  const pollsRef = useRef(0);
+  useEffect(() => {
+    if (step !== 'result' || !issue?.id) return;
+    const st = issue.aiAnalysis?.status ?? issue.analysisStatus;
+    if (st === 'COMPLETED' || st === 'FAILED') return;
+    let active = true;
+    if (pollsRef.current >= 15) return;
+    const timer = setInterval(async () => {
+      pollsRef.current += 1;
+      if (pollsRef.current > 15 || !active) {
+        clearInterval(timer);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/issues/${issue.id}`);
+        if (!res.ok) return;
+        const detail = (await res.json()) as { issue: IssueDetail };
+        if (!active) return;
+        setIssue(detail.issue);
+      } catch {
+        clearInterval(timer);
+      }
+    }, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [step, issue]);
 
-      <div className="pt-20 md:pt-24 pb-16">
-        <div className="max-w-3xl mx-auto px-4 md:px-6 lg:px-8">
-          <div className="text-center mb-12">
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="text-center mb-12">
             <h1 className="font-display text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-4">
               Report a Civic Issue
             </h1>
@@ -363,20 +401,60 @@ export default function ReportPage() {
                     </div>
                   </div>
 
+                  {duplicate && duplicate.band !== 'probably_new' && (
+                    <div className={cn(
+                      'mb-4 p-4 rounded-xl border flex items-start gap-3',
+                      duplicate.band === 'strong'
+                        ? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20'
+                        : 'border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-900/20'
+                    )}>
+                      <GitMerge className={cn('w-5 h-5 mt-0.5 flex-shrink-0', duplicate.band === 'strong' ? 'text-amber-500' : 'text-sky-500')} />
+                      <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                        <p className="font-medium text-neutral-900 dark:text-white mb-1">
+                          {duplicate.band === 'strong' ? 'A very similar report already exists' : 'A possibly similar report exists'}
+                        </p>
+                        <p>
+                          <span className="font-mono font-semibold">#{duplicate.candidatePublicId}</span> was detected with{' '}
+                          <span className="font-semibold">{Math.round(duplicate.confidence * 100)}%</span> match confidence
+                          {duplicate.distanceMeters != null ? <> and is located ~{Math.round(duplicate.distanceMeters)} m away</> : null}.
+                        </p>
+                        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                          {duplicate.band === 'strong'
+                            ? 'Your report has been grouped with the existing report so authorities see the full picture. You can still review it below — nothing is hidden or lost.'
+                            : 'This is not a block. Review the existing report, or keep your submission as-is.'}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/dashboard/issues/${duplicate.candidateIssueId}`}>
+                              View existing report
+                            </Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={resetForm}>
+                            My report is different
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="p-6 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
                     <h4 className="text-sm font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
                       <FileText className="w-4 h-4 text-brand-500" />
                       Classification
                     </h4>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="p-3 rounded-lg bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
                         <p className="text-xs text-neutral-500 mb-1">Category</p>
                         <p className="font-medium text-neutral-900 dark:text-white">{issue.categoryLabel}</p>
                       </div>
                       <div className="p-3 rounded-lg bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
-                        <p className="text-xs text-neutral-500 mb-1">Status</p>
-                        <p className="font-medium text-emerald-600 dark:text-emerald-400">{issue.statusLabel}</p>
+                        <p className="text-xs text-neutral-500 mb-1">Priority</p>
+                        <p className="font-medium text-neutral-900 dark:text-white">
+                          {issue.priorityLevel
+                            ? `${PRIORITY_LEVEL_LABELS[issue.priorityLevel as keyof typeof PRIORITY_LEVEL_LABELS] ?? issue.priorityLevel}`
+                            : 'Pending (after analysis)'}
+                        </p>
                       </div>
                       <div className="p-3 rounded-lg bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
                         <p className="text-xs text-neutral-500 mb-1">Department</p>
@@ -389,14 +467,79 @@ export default function ReportPage() {
                         </p>
                       </div>
                     </div>
+
+                    {issue.incident && (
+                      <div className="mt-4 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2">
+                        <GitMerge className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                        <p className="text-xs text-neutral-700 dark:text-neutral-300">
+                          This report is part of incident{' '}
+                          <span className="font-mono font-semibold">{issue.incident.publicId}</span> with{' '}
+                          {issue.incident.memberCount} report(s) covering the same issue.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="mt-4 p-4 rounded-xl border border-neutral-200 bg-white dark:bg-dark-bg-card dark:border-dark-border flex items-start gap-3">
-                    <Brain className="w-5 h-5 text-neutral-400 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      Report creation, evidence validation and the accountability workflow are live. Server-side AI analysis — severity, cross-report duplicate detection and verification — is planned for a later phase and was deliberately not simulated.
-                    </p>
-                  </div>
+                  {(() => {
+                    const ai = issue.aiAnalysis;
+                    if (ai?.status === 'COMPLETED') {
+                      return (
+                        <div className="mt-4 p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-900/10 dark:border-emerald-800">
+                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <ShieldAlert className="w-4 h-4" /> AI Analysis Complete
+                          </p>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div>
+                              <p className="text-xs text-neutral-500 mb-0.5">Severity</p>
+                              <p className="text-sm font-medium text-neutral-900 dark:text-white">{ai.severityLabel ?? '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-500 mb-0.5">Confidence</p>
+                              <p className="text-sm font-medium text-neutral-900 dark:text-white">{ai.confidence != null ? `${Math.round(ai.confidence * 100)}%` : '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-500 mb-0.5">Safety risk</p>
+                              <p className="text-sm font-medium text-neutral-900 dark:text-white">{ai.safetyRiskLabel ?? '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-500 mb-0.5">Infrastructure</p>
+                              <p className="text-sm font-medium text-neutral-900 dark:text-white">{ai.infrastructureTypeLabel ?? '—'}</p>
+                            </div>
+                          </div>
+                          {ai.reasoningSummary && (
+                            <p className="mt-3 text-xs text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap">{ai.reasoningSummary}</p>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (ai?.status === 'FAILED') {
+                      return (
+                        <div className="mt-4 p-4 rounded-xl border border-neutral-200 bg-white dark:bg-dark-bg-card dark:border-dark-border flex items-start gap-3">
+                          <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                            <p className="font-medium text-neutral-900 dark:text-white mb-1">AI analysis is currently unavailable for this report</p>
+                            <p>
+                              {ai.errorMessage || 'The analysis service did not respond.'} Your report stays visible and will be reviewed manually — no simulated scores are shown.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="mt-4 p-4 rounded-xl border border-brand-200 bg-brand-50 dark:bg-brand-900/20 dark:border-brand-800 flex items-start gap-3">
+                        <Brain className="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                          <p className="font-medium text-neutral-900 dark:text-white mb-1 flex items-center gap-2">
+                            Server-side AI analysis in progress
+                            <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
+                          </p>
+                          <p>
+                            Severity, safety risk and infrastructure classification are being computed. Your report is already recorded and safe — refresh or revisit the report to see the result.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {issue.hasLocation && (
                     <div className="mt-4 p-4 rounded-xl border border-neutral-200 bg-white dark:bg-dark-bg-card dark:border-dark-border flex items-start gap-3">
                       <MapPin className="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" />
@@ -429,8 +572,6 @@ export default function ReportPage() {
               </div>
             </div>
           )}
-        </div>
-      </div>
     </div>
   );
 }

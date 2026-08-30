@@ -18,15 +18,9 @@ import type { IssueDetail } from '@/lib/issues/types';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-const STATUS_OPTIONS = [
-  'SUBMITTED',
-  'UNDER_REVIEW',
-  'VERIFIED',
-  'ASSIGNED',
-  'IN_PROGRESS',
-  'RESOLVED',
-  'REJECTED',
-];
+function statusLabel(status: string): string {
+  return status.replace(/_/g, ' ');
+}
 
 interface IssueDrawerProps {
   issueId: string | null;
@@ -64,9 +58,8 @@ export function IssueDrawer({
   const [savingEscalation, setSavingEscalation] = useState(false);
   const [float, setFloat] = useState<string | null>(null);
 
-  // Empty override means "the report's real status", so the control always
-  // reflects the live record without copying props into state.
-  const currentStatus = status === '' ? (detail?.status ?? '') : status;
+  // The status state holds the selected NEXT transition (or '' when none chosen).
+  const transitions = detail?.allowedTransitions ?? [];
 
   useEffect(() => {
     if (!float) return;
@@ -90,13 +83,21 @@ export function IssueDrawer({
   if (!open) return null;
 
   const applyStatus = async () => {
-    if (!detail || currentStatus === detail.status || savingStatus) return;
+    if (
+      !detail ||
+      status === '' ||
+      !transitions.includes(status) ||
+      status === detail.status ||
+      savingStatus
+    ) {
+      return;
+    }
     setSavingStatus(true);
     try {
       const res = await fetch(`/api/issues/${detail.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: currentStatus }),
+        body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error();
       await mutate();
@@ -217,22 +218,30 @@ export function IssueDrawer({
                 </div>
               </div>
 
-              {canUpdateStatus && (
+              {canUpdateStatus && transitions.length > 0 && (
                 <Card variant="outlined" padding="sm" className="bg-neutral-50/60 dark:bg-dark-bg/40">
                   <CardContent>
-                    <p className="text-sm font-medium mb-2 text-neutral-800 dark:text-neutral-200">Update status</p>
+                    <p className="text-sm font-medium mb-2 text-neutral-800 dark:text-neutral-200">
+                      Move to next stage
+                    </p>
                     <div className="flex flex-wrap items-center gap-2">
                       <select
-                        value={currentStatus}
+                        value={status}
                         onChange={(e) => setStatus(e.target.value)}
                         className="flex-1 min-w-40 rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                        aria-label="Lifecycle status"
+                        aria-label="Next lifecycle status"
                       >
-                        {STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                        <option value="">Choose a transition…</option>
+                        {transitions.map((s) => (
+                          <option key={s} value={s}>{statusLabel(s)}</option>
                         ))}
                       </select>
-                      <Button size="sm" loading={savingStatus} onClick={applyStatus} disabled={currentStatus === detail.status}>
+                      <Button
+                        size="sm"
+                        loading={savingStatus}
+                        onClick={applyStatus}
+                        disabled={status === '' || !transitions.includes(status) || status === detail.status}
+                      >
                         Apply
                       </Button>
                     </div>

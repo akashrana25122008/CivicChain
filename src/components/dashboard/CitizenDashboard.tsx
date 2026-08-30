@@ -23,6 +23,7 @@ import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { ErrorState } from '@/components/dashboard/ErrorState';
 import { IssuesMap } from '@/components/dashboard/IssuesMap';
+import { RiskEngine } from '@/components/dashboard/RiskEngine';
 import { cn } from '@/lib/utils';
 import type { IssueDetail, IssueListItem, NotificationItem } from '@/lib/issues/types';
 
@@ -78,7 +79,7 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
   const recentUpdates = (all?.issues ?? []).slice(0, 3);
 
   return (
-    <div className="p-6 md:p-8">
+    <div className="space-y-8">
       <PageHeader
         kicker="Citizen workspace"
         title={`${greeting()}, ${firstName(name)}`}
@@ -113,6 +114,67 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
 
       {summaryError && <ErrorState onRetry={() => mutateSummary()} />}
 
+      {/* ===== Hero: Live Map (primary) + Risk Intelligence (accent) ===== */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle as="h2" className="text-lg">Civic Intelligence Map</CardTitle>
+              <Link href="/map" className="text-xs text-brand-600 dark:text-brand-400 flex items-center gap-1">
+                Full map <ArrowRight className="w-3 h-3" />
+              </Link>
+            </CardHeader>
+            <CardContent>
+              <Link href="/map" className="block group" aria-label="Open full civic map">
+                <span className="relative block">
+                  <IssuesMap issues={myMapPoints} />
+                  <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-brand-600 text-white text-xs font-semibold px-3 py-1.5 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                    Open full map <ArrowRight className="w-3 h-3" />
+                  </span>
+                </span>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <RiskEngine
+            score={stats ? Math.min(100, Math.max(1, (stats.active ?? 0) + 10)) : undefined}
+            level={stats && stats.active > 20 ? 'HIGH' : stats && stats.active > 8 ? 'MODERATE' : 'LOW'}
+            ward="Your city · live"
+            trend={stats ? `~${stats.active ?? 0} active` : undefined}
+            confidence={0.92}
+            predictedIncidents={stats?.active ?? undefined}
+            live
+          />
+
+          <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+            <CardHeader>
+              <CardTitle as="h2" className="text-lg">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <Link href="/report" className="flex items-center gap-3 p-3 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 hover:bg-brand-100 dark:hover:bg-brand-900/30 transition-colors">
+                  <PlusCircle className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+                  <span className="text-sm font-medium text-brand-700 dark:text-brand-300">Report New Issue</span>
+                </Link>
+                <Link href="/my-reports" className="flex items-center gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:bg-neutral-100 dark:hover:bg-dark-bg-card transition-colors">
+                  <FileText className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+                  <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">My Reports</span>
+                </Link>
+                <Link href="/dashboard/notifications" className="flex items-center gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:bg-neutral-100 dark:hover:bg-dark-bg-card transition-colors">
+                  <Bell className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+                  <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    Notifications{notifications?.unreadCount ? ` (${notifications.unreadCount} unread)` : ''}
+                  </span>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* ===== Reports + Timeline ===== */}
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
@@ -161,7 +223,9 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
               )}
             </CardContent>
           </Card>
+        </div>
 
+        <div className="space-y-6">
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle as="h2" className="text-lg">Latest Report Timeline</CardTitle>
@@ -200,102 +264,67 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
             </CardContent>
           </Card>
         </div>
+      </div>
 
-        <div className="space-y-6">
-          <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
-            <CardHeader>
-              <CardTitle as="h2" className="text-lg">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent>
+      {/* ===== Updates ===== */}
+      <div className="grid sm:grid-cols-2 gap-6">
+        <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle as="h2" className="text-lg">Latest Updates</CardTitle>
+            <Link href="/dashboard/notifications" className="text-xs text-brand-600 dark:text-brand-400">View all</Link>
+          </CardHeader>
+          <CardContent>
+            {!notifications ? (
+              <LoadingBlock rows={2} />
+            ) : notifications.notifications.length === 0 ? (
+              <p className="text-sm text-neutral-500 py-4 text-center">No notifications yet.</p>
+            ) : (
               <div className="space-y-3">
-                <Link href="/report" className="flex items-center gap-3 p-3 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 hover:bg-brand-100 dark:hover:bg-brand-900/30 transition-colors">
-                  <PlusCircle className="w-5 h-5 text-brand-600 dark:text-brand-400" />
-                  <span className="text-sm font-medium text-brand-700 dark:text-brand-300">Report New Issue</span>
-                </Link>
-                <Link href="/my-reports" className="flex items-center gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:bg-neutral-100 dark:hover:bg-dark-bg-card transition-colors">
-                  <FileText className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-                  <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">My Reports</span>
-                </Link>
-                <Link href="/dashboard/notifications" className="flex items-center gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:bg-neutral-100 dark:hover:bg-dark-bg-card transition-colors">
-                  <Bell className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-                  <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                    Notifications{notifications?.unreadCount ? ` (${notifications.unreadCount} unread)` : ''}
-                  </span>
-                </Link>
+                {notifications.notifications.slice(0, 3).map((n) => (
+                  <Link key={n.id} href="/dashboard/notifications" onClick={() => mutateNotifications()}
+                    className="block p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:border-brand-300 dark:hover:border-brand-700 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        {n.issuePublicId && <span className="font-mono text-xs text-brand-600 dark:text-brand-400 mr-1.5">{n.issuePublicId}</span>}
+                        {n.title}
+                      </p>
+                      <span className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0', n.read ? 'bg-neutral-300 dark:bg-neutral-600' : 'bg-brand-500')} aria-hidden="true" />
+                    </div>
+                    {n.message && <p className="text-xs text-neutral-500 mt-1">{n.message}</p>}
+                    <p className="text-[11px] text-neutral-400 mt-1.5">{n.timeLabel}</p>
+                  </Link>
+                ))}
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </CardContent>
+        </Card>
 
-          <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle as="h2" className="text-lg">Where Your Reports Are</CardTitle>
-              <Link href="/dashboard/map" className="text-xs text-brand-600 dark:text-brand-400 flex items-center gap-1">
-                Full map <ArrowRight className="w-3 h-3" />
-              </Link>
-            </CardHeader>
-            <CardContent>
-              <IssuesMap issues={myMapPoints} />
-            </CardContent>
-          </Card>
-
-          <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle as="h2" className="text-lg">Latest Updates</CardTitle>
-              <Link href="/dashboard/notifications" className="text-xs text-brand-600 dark:text-brand-400">View all</Link>
-            </CardHeader>
-            <CardContent>
-              {!notifications ? (
-                <LoadingBlock rows={2} />
-              ) : notifications.notifications.length === 0 ? (
-                <p className="text-sm text-neutral-500 py-4 text-center">No notifications yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {notifications.notifications.slice(0, 3).map((n) => (
-                    <Link key={n.id} href="/dashboard/notifications" onClick={() => mutateNotifications()}
-                      className="block p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:border-brand-300 dark:hover:border-brand-700 transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                          {n.issuePublicId && <span className="font-mono text-xs text-brand-600 dark:text-brand-400 mr-1.5">{n.issuePublicId}</span>}
-                          {n.title}
-                        </p>
-                        <span className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0', n.read ? 'bg-neutral-300 dark:bg-neutral-600' : 'bg-brand-500')} aria-hidden="true" />
-                      </div>
-                      {n.message && <p className="text-xs text-neutral-500 mt-1">{n.message}</p>}
-                      <p className="text-[11px] text-neutral-400 mt-1.5">{n.timeLabel}</p>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle as="h2" className="text-lg">Recent Civic Updates</CardTitle>
-              <Link href="/dashboard/issues" className="text-xs text-brand-600 dark:text-brand-400">All issues</Link>
-            </CardHeader>
-            <CardContent>
-              {!all ? (
-                <LoadingBlock rows={2} />
-              ) : recentUpdates.length === 0 ? (
-                <p className="text-sm text-neutral-500 py-4 text-center">No civic issues reported yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {recentUpdates.map((issue) => (
-                    <Link key={issue.id} href={`/dashboard/issues/${issue.id}`}
-                      className="flex items-center justify-between gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:border-brand-300 dark:hover:border-brand-700 transition-colors">
-                      <div className="min-w-0">
-                        <p className="font-mono text-xs font-bold text-neutral-900 dark:text-white">{issue.publicId}</p>
-                        <p className="text-sm text-neutral-700 dark:text-neutral-300 truncate">{issue.title}</p>
-                      </div>
-                      <Badge variant="status" status={issue.displayStatus} size="sm" className="flex-shrink-0" />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle as="h2" className="text-lg">Recent Civic Updates</CardTitle>
+            <Link href="/dashboard/issues" className="text-xs text-brand-600 dark:text-brand-400">All issues</Link>
+          </CardHeader>
+          <CardContent>
+            {!all ? (
+              <LoadingBlock rows={2} />
+            ) : recentUpdates.length === 0 ? (
+              <p className="text-sm text-neutral-500 py-4 text-center">No civic issues reported yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {recentUpdates.map((issue) => (
+                  <Link key={issue.id} href={`/dashboard/issues/${issue.id}`}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border hover:border-brand-300 dark:hover:border-brand-700 transition-colors">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-bold text-neutral-900 dark:text-white">{issue.publicId}</p>
+                      <p className="text-sm text-neutral-700 dark:text-neutral-300 truncate">{issue.title}</p>
+                    </div>
+                    <Badge variant="status" status={issue.displayStatus} size="sm" className="flex-shrink-0" />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

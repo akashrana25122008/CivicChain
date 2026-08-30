@@ -29,6 +29,14 @@ enum UserRole {
   ADMIN
 }
 
+// Gate for role requests made during self-service signup. Signup never grants
+// a privileged role directly; an existing ADMIN must approve the request.
+enum RoleApprovalStatus {
+  APPROVED
+  PENDING
+  REJECTED
+}
+
 enum IssueCategory {
   POTHOLE
   DRAINAGE
@@ -91,6 +99,11 @@ enum AuditAction {
   VERIFICATION_CREATED
   ESCALATION_CREATED
   AUTHORITY_ASSIGNED
+  AI_ANALYSIS_COMPLETED
+  AI_ANALYSIS_FAILED
+  INCIDENT_ASSIGNED
+  ROLE_REQUEST_APPROVED
+  ROLE_REQUEST_REJECTED
 }
 
 enum NotificationType {
@@ -105,6 +118,110 @@ enum NotificationType {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 3 — Real AI intelligence
+// ---------------------------------------------------------------------------
+
+/** Categories the AI model is asked to classify a report into. */
+enum AICategory {
+  ROAD_DAMAGE
+  STREET_LIGHT
+  GARBAGE
+  WATER_LEAKAGE
+  DRAINAGE
+  TRAFFIC_SIGNAL
+  PUBLIC_INFRASTRUCTURE
+  OTHER
+}
+
+/** Severity vocabulary produced by the AI model (mirrors Severity values). */
+enum AISeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/** Immediate safety risk to the public assessed by the AI model. */
+enum SafetyRisk {
+  NONE
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+/** The class of civic asset the AI model believes is damaged/affected. */
+enum InfrastructureType {
+  ROAD
+  SIDEWALK
+  BRIDGE
+  STREET_LIGHT
+  TRAFFIC_SIGNAL
+  DRAINAGE_SYSTEM
+  WATER_SUPPLY
+  PUBLIC_BUILDING
+  PARK
+  NONE
+  OTHER
+}
+
+/** Lifecycle of a server-side AI analysis run. No duration is simulated. */
+enum AIAnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Priority levels
+// ---------------------------------------------------------------------------
+
+/** Band derived from the 0-100 priority engine score. */
+enum PriorityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — Automated escalation
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical escalation levels. The department escalation ladder. Kept as a
+ * shared constant so levels are never arbitrary strings scattered in code;
+ * the DB persists the numeric `level` (1-4) on the Escalation model.
+ */
+enum EscalationLevel {
+  LEVEL_1 // Department Officer
+  LEVEL_2 // Department Head
+  LEVEL_3 // Municipal Authority
+  LEVEL_4 // Admin
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10 — Community voting & civic karma
+// ---------------------------------------------------------------------------
+
+enum VoteType {
+  CONFIRM
+  DISPUTE
+  SUPPORT
+  DUPLICATE
+}
+
+enum KarmaEventType {
+  REPORT_VERIFIED
+  EVIDENCE_VERIFIED
+  HELPFUL_CONFIRMATION
+  VALID_DUPLICATE
+  FALSE_REPORT
+  ABUSIVE_VOTE
+}
+
+// ---------------------------------------------------------------------------
 // Identity & auth (NextAuth/Auth.js v5 + Prisma adapter)
 // ---------------------------------------------------------------------------
 
@@ -115,6 +232,15 @@ model User {
   emailVerified DateTime?
   image         String?
   role          UserRole  @default(CITIZEN)
+  // Privileged role requested at self-service signup (AUTHORITY/ADMIN).
+  // Never trusted until an ADMIN approves it — see RoleApprovalStatus.
+  requestedRole UserRole?
+  roleStatus    RoleApprovalStatus @default(APPROVED)
+  roleReviewedById String?
+  roleReviewedAt   DateTime?
+
+  roleReviewedBy User? @relation("RoleReviewer", fields: [roleReviewedById], references: [id], onDelete: SetNull)
+  roleReviewees  User[] @relation("RoleReviewer")
   karmaScore    Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -126,6 +252,8 @@ model User {
   authorities    Authority[]     @relation("AuthorityUser")
   notifications  Notification[]
   auditLogs      AuditLog[]      @relation("AuditActor")
+  votes          Vote[]
+  karmaEvents    KarmaEvent[]
   accounts       Account[]
   sessions       Session[]
   authenticators Authenticator[]
@@ -229,6 +357,11 @@ model Issue {
   reporterId  String
   authorityId String?
 
+  // Phase 4 — duplicate engine + priority engine outputs.
+  incidentId    String?
+  incidentMatch Json?  // { incidentId, confidence, band, signals } audit trail
+  priorityLevel PriorityLevel?
+
   // PostGIS point; created as a GENERATED ALWAYS AS ... geography column by
   // raw SQL in the initial migration. Unsupported() keeps Prisma aware of the
   // column so migrate diff does not try to drop it. GIST index also raw SQL.
@@ -242,7 +375,11 @@ model Issue {
   escalations  Escalation[]
   auditLogs    AuditLog[]
   notifications Notification[]
+  votes        Vote[]
+  karmaEvents  KarmaEvent[]
   promise      Promise?
+  aiAnalysis   AIAnalysis?
+  incident     Incident? @relation(fields: [incidentId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -252,7 +389,10 @@ model Issue {
   @@index([category])
   @@index([createdAt])
   @@index([authorityId])
+  @@index([incidentId])
   @@index([latitude, longitude])
+  @@index([priority])
+  @@index([priorityLevel])
   @@index([geoLocation], type: Gist, map: "issue_geoLocation_idx")
 }
 
@@ -266,6 +406,9 @@ model Evidence {
   sizeBytes    Int?
   metadata     Json?
   uploadedById String?
+  // Phase 4 — perceptual image fingerprint computed server-side (dHash hex).
+  // Populated for IMAGE evidence; used unchanged by the duplicate engine.
+  perceptualHash String?
 
   issue   Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
   uploader User? @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
@@ -394,9 +537,139 @@ model RefCounter {
 }
 
 // ---------------------------------------------------------------------------
-// Future models (NOT implemented in Phase 1) — architecturally anticipated:
-//   CivicKarma      -> extends User.karmaScore into a full model (Phase 3)
-//   RiskPrediction  -> per-ward predictive risk records (Phase 2/3)
-//   IncidentCluster -> geospatial incident clustering (Phase 2/3)
+// Phase 3+4 — AI analysis, incidents & prioritization
+// ---------------------------------------------------------------------------
+
+/**
+ * One server-side AI analysis run for a report. Real model inference only —
+ * never fabricated. Lifecycle: PENDING -> PROCESSING -> COMPLETED | FAILED.
+ * A FAILED run always leaves the parent Issue untouched and usable.
+ */
+model AIAnalysis {
+  id         String            @id @default(cuid())
+  issueId    String            @unique
+  status     AIAnalysisStatus  @default(PENDING)
+  category   AICategory?
+  severity   AISeverity?
+  confidence Float? // 0-1 model confidence in the classification
+  safetyRisk SafetyRisk?
+  infrastructureType InfrastructureType?
+  reasoningSummary String?
+  modelName         String?
+  modelVersion      String?
+  errorMessage      String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+/**
+ * A parent entity grouping individual citizen reports (Issue) that the
+ * duplicate engine determined to describe the same underlying problem.
+ * Individual reports remain independent and are never auto-deleted or blocked.
+ */
+model Incident {
+  id        String        @id @default(cuid())
+  publicId  String        @unique // human-facing reference, e.g. CC-INC-4
+  title     String // derived from the first report in the cluster
+  category  IssueCategory // current best category for the cluster
+  status    IssueStatus   @default(SUBMITTED)
+  severity  Severity?
+  priority  Int?
+  priorityLevel PriorityLevel?
+
+  issues Issue[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([category])
+  @@index([priorityLevel])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — Escalation rules (automated, configurable escalation ladder)
+// ---------------------------------------------------------------------------
+
+/**
+ * A declarative, configurable rule that decides when an active Issue should be
+ * escalated. Evaluated by the escalation engine (src/lib/escalation/engine).
+ * Rules are data, not logic scattered in route handlers. `conditions` is a
+ * JSON bag of numeric/enum gates, e.g. { "slaPctGte": 80, "statusNotIn": ["RESOLVED","REJECTED"] }.
+ */
+model EscalationRule {
+  id          String   @id @default(cuid())
+  name        String
+  enabled     Boolean  @default(true)
+  priority    Int      @default(0) // lower number evaluated first
+  fromLevel   Int      @default(0) // minimum current escalation level required to trigger (0 = any)
+  targetLevel Int      @default(1) // the ladder step this rule escalates TO
+  minSeverity Severity?
+  minPriority Int? // optional 0-100 priority gate
+  conditions  Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled, priority])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10 — Community votes & civic karma (auditable event ledger)
+// ---------------------------------------------------------------------------
+
+/**
+ * A single typed community vote on an Issue. One (user, issue, type) is unique,
+ * so neither a double-click nor a worker retry can produce a duplicate vote.
+ * Votes are signals, not authority: the intelligence engine and state machine
+ * remain authoritative.
+ */
+model Vote {
+  id        String   @id @default(cuid())
+  issueId   String
+  userId    String
+  type      VoteType
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, userId, type])
+  @@index([issueId])
+  @@index([userId])
+}
+
+/**
+ * An auditable karma event. Points are derived ONLY from trusted system events
+ * via applyKarmaEvent(); clients can never set User.karmaScore directly.
+ * `dedupeKey` is unique so a retried worker can never award points twice.
+ */
+model KarmaEvent {
+  id        String         @id @default(cuid())
+  userId    String
+  type      KarmaEventType
+  points    Int
+  issueId   String?
+  dedupeKey String?        @unique // e.g. "REPORT_VERIFIED:issue=cc:id" — idempotency guard
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([issueId])
+  @@index([type])
+}
+
+// ---------------------------------------------------------------------------
+// Future models (NOT implemented) — architecturally anticipated:
+//   RiskPrediction  -> per-ward predictive risk records
 // They are deliberately absent so the schema stays minimal and migration-safe.
 // ---------------------------------------------------------------------------

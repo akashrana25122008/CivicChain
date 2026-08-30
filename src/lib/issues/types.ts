@@ -17,13 +17,17 @@ export interface IssueListItem {
   severity: string | null;
   severityLabel: string | null;
   priority: number | null;
+  priorityLevel: string | null;
   location: string | null;
   authority: string | null;
   promiseLabel: string | null;
   /** Number of merged citizen reports. Always 1 until duplicate merging exists. */
   reportCount: number;
   createdAt: string;
+  updatedAt: string;
   timeLabel: string;
+  /** Authority promise deadline (ISO), if a promise exists for the issue. */
+  promiseDeadline: string | null;
   byCurrentUser: boolean;
   hasLocation: boolean;
   latitude: number | null;
@@ -31,6 +35,8 @@ export interface IssueListItem {
   accuracy: number | null;
   /** Reporter display name (only populated on staff/admin views). */
   reporterName: string | null;
+  /** Incident cluster this report belongs to, if any. */
+  incidentId: string | null;
 }
 
 export interface EvidenceQueueItem extends EvidenceItem {
@@ -74,6 +80,65 @@ export interface EvidenceItem {
   verification: EvidenceVerification | null;
 }
 
+export type AiAnalysisItem = {
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  category: string | null;
+  categoryLabel: string | null;
+  severity: string | null;
+  severityLabel: string | null;
+  confidence: number | null;
+  safetyRisk: string | null;
+  safetyRiskLabel: string | null;
+  infrastructureType: string | null;
+  infrastructureTypeLabel: string | null;
+  reasoningSummary: string | null;
+  modelName: string | null;
+  errorMessage: string | null;
+  analyzedAt: string | null;
+} | null;
+
+export type IncidentSummary = {
+  id: string;
+  publicId: string;
+  title: string;
+  memberCount: number;
+  memberPublicIds: string[];
+} | null;
+
+export type PriorityComponentItem = {
+  key: string;
+  label: string;
+  weight: number;
+  score: number;
+  origin: 'computed' | 'unavailable';
+};
+
+export type PriorityBreakdown = {
+  score: number;
+  level: string;
+  components: PriorityComponentItem[];
+  unavailable: string[];
+} | null;
+
+export type DuplicateSignalsItem = {
+  geographic: number | null;
+  text: number | null;
+  image: number | null;
+  time: number;
+  category: number;
+  contributors: string[];
+};
+
+export type DuplicateVerdictItem = {
+  candidateIssueId: string;
+  candidatePublicId: string;
+  candidateIncidentId: string | null;
+  distanceMeters: number | null;
+  confidence: number;
+  band: 'probably_new' | 'possible' | 'strong';
+  signals: DuplicateSignalsItem;
+} | null;
+
 export interface IssueDetail extends IssueListItem {
   description: string | null;
   latitude: number | null;
@@ -81,7 +146,14 @@ export interface IssueDetail extends IssueListItem {
   contact: string | null;
   evidence: EvidenceItem[];
   timeline: TimelineItem[];
+  /** Back-compat field; use aiAnalysis.confidence going forward. */
   aiConfidence: number | null;
+  analysisStatus: string | null;
+  aiAnalysis: AiAnalysisItem;
+  incident: IncidentSummary;
+  priorityBreakdown: PriorityBreakdown;
+  /** Lifecycle statuses the current viewer is authorized to request next. */
+  allowedTransitions: string[];
 }
 
 export interface ApiIssueResponse {

@@ -5,7 +5,7 @@ import { Navigation } from '@/components/layout/Navigation';
 
 export const metadata: Metadata = {
   title: 'Create Account',
-  description: 'Create your CivicChain citizen account with a magic link.',
+  description: 'Create your CivicChain account. Citizens sign in instantly; Department and Admin requests are reviewed by an administrator.',
 };
 
 export default function RegisterPage() {
@@ -19,8 +19,8 @@ export default function RegisterPage() {
               Create your CivicChain account
             </h1>
             <p className="text-neutral-600 dark:text-neutral-400">
-              Passwordless. Enter your email — the first sign-in creates your
-              CITIZEN account automatically.
+              Passwordless. Choose an account type — a magic link is sent to
+              your email to finish signing up.
             </p>
           </div>
           <LoginForm mode="register" />

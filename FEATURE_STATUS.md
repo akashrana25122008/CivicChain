@@ -17,7 +17,157 @@ Phase 0 freeze & audit. Generated from direct source inspection
 
 | WORKING | PARTIAL | MOCK | MISSING | UNKNOWN |
 | ------: | ------: | ---: | ------: | ------: |
-|      18 |      11 |   11 |       7 |       0 |
+|      21 |      10 |    9 |       7 |       0 |
+
+## Phase 3/4 Update (this revision — Real AI Analysis + Duplicate Detection + Priority Engine)
+
+Server-side intelligence is now real and database-backed. No AI result is
+simulated anywhere: when no `AI_API_KEY`/`AI_BASE_URL` is configured the
+analysis pipeline records an honest `FAILED` verdict (with an explanatory
+message) and the report remains fully visible — the exact same path the app
+would take on a real model outage.
+
+- **AI issue classification** — MOCK → **WORKING** (real OpenAI-compatible
+  chat-completions client; classification persisted to the `AIAnalysis` table
+  with `PENDING/PROCESSING/COMPLETED/FAILED` lifecycle; category mapped back to
+  the existing `IssueCategory` so routing/filters stay coherent).
+- **AI severity detection** — MOCK → **WORKING** (severity + safety risk +
+  infrastructure type + confidence produced by the same real pipeline and
+  shown in the UI with model name + reasoning summary).
+- **Duplicate detection / report merging** — PARTIAL → **WORKING** (five real
+  signals — PostGIS geographic distance, trigram text similarity, perceptual
+  dHash image similarity, report timing recency, category match — combined into
+  a 0–1 confidence; `possible` warns without merging, `strong` groups reports
+  into an `Incident` with a `CC-INC-*` public id; the synchronous 60 s
+  same-reporter window guard is unchanged).
+- **Priority score & labels** — PARTIAL → **WORKING** (spec formula computed
+  server-side into a normalized 0–100 score + `LOW/MEDIUM/HIGH/CRITICAL` level;
+  population impact and location criticality are scored neutral 50 and flagged
+  `unavailable` when the system has no data — never invented; evidence
+  confidence uses a real rubric over attachments).
+- **AI verification meters (issue detail page)** — the hardcoded meter
+  constants were replaced with real duplicate/incident + AI state cards
+  (classification card shows severity/safety/infrastructure/confidence/reasoning
+  and the honest `FAILED`/`PENDING` states when relevant).
+- **Background processing** — MISSING → **PARTIAL** (no queue infra; the
+  pipeline runs via `after()` from `next/server` after the response plus a
+  resume-on-read guard, so analysis always reaches a terminal state even if the
+  process dies mid-run).
+- **Report / incident counts** — issue detail and lists now reflect real
+  incident membership (`Incident.issues`), replacing the "merged reports" count.
+- Report result page shows **Similar Issue Found** (strong/possible bands) with
+  a "view existing report" link and a keep-my-report path that never blocks.
+
+Still MOCK / MISSING (unchanged, future phases): verification CV meters,
+hotspot/risk engine (spatial clustering), live incident map markers, promise
+SLA engine + deadlines, escalation engine, community votes, settings
+persistence, broken-promise showcase, civic karma, real-time/websockets,
+email/push notifications, a real queue/worker (current after-response pipeline
+is dependency-light by design).
+
+## Phase 2/3 Update (this revision — Canonical API + Lifecycle State Machine)
+
+The lifecycle status is now governed by a single server-side authority rather
+than arbitrary client-driven PATCHes:
+
+- **Central transition state machine** — MISSING → **WORKING** (`src/lib/issues/transition.ts`).
+  `transitionIssue()` is the ONE place that may mutate `Issue.status`. Every
+  HTTP surface — `PATCH /api/issues/[id]` and the deprecated `PATCH /api/reports/[id]`
+  adapter — delegates here. The transition graph (`ISSUE_TRANSITIONS`) rejects
+  arbitrary jumps (e.g. `SUBMITTED → RESOLVED`) with a `400 INVALID_TRANSITION`,
+  and RBAC is enforced inside the same call: only an ADMIN, or the AUTHORITY of
+  the issue's department, may transition; citizens are always read-only. Each
+  accepted transition is written atomically with an audit entry and a reporter
+  notification (`STATUS_CHANGED`).
+- **Canonical `/api/issues` resource** — `POST /api/issues`, `GET /api/issues`,
+  `GET /api/issues/[id]`, `PATCH /api/issues/[id]` are the canonical API. All
+  handlers share one implementation (`src/lib/issues/http.ts`). `/api/reports`
+  and `/api/reports/[id]` are preserved as deprecated compatibility adapters
+  that call the exact same code; internal frontend consumers have been moved to
+  `/api/issues`, and `/api/reports` carries no domain logic.
+- **Allowed-transitions surfaced to the UI** — `GET /api/issues/[id]` and the
+  department detail surface now return `IssueDetail.allowedTransitions` (empty
+  for citizens / unauthorized staff). `IssueDrawer` renders only those legal
+  next transitions, so the client can no longer request an invalid jump.
+
+### Canonical domain-action endpoints (this revision)
+
+Lifecycle changes are also exposed as explicit, intent-named endpoints under
+`/api/issues/[id]/` (each delegates to `actions.ts`, which uses the same single
+`transitionIssue()` authority — there is exactly one way to mutate status):
+
+- `POST /api/issues/[id]/resolve` — staff resolve (`IN_PROGRESS/ASSIGNED/VERIFIED` → `RESOLVED`; idempotent).
+- `POST /api/issues/[id]/reopen` — reopen `RESOLVED` (→ `IN_PROGRESS`) or `REJECTED` (→ `UNDER_REVIEW`); owner or staff.
+- `POST /api/issues/[id]/verify` — reporter confirmation: `VERIFIED` closes, `DISPUTED` reopens.
+- `POST /api/issues/[id]/analyze` — triggers the existing intelligence pipeline (no fake results).
+- `POST /api/issues/[id]/evidence` / `GET` — add / list evidence via the shared file-validator.
+- `POST /api/issues/[id]/escalate` — raise `Escalation` (level = max+1; rejected while an open escalation exists).
+
+`PATCH /api/issues/[id]` remains available but is NOT an arbitrary-status escape
+hatch: any `status` value is still validated against the transition graph inside
+`transitionIssue()` — invalid jumps such as `PATCH {status:"RESOLVED"}` on a
+`SUBMITTED` issue return `400 INVALID_TRANSITION`.
+
+### State-machine test suite (this revision)
+
+Pure transition-graph invariants are covered by `node:test` (run via
+`npm test`, tsx loader, no external test framework): valid/invalid transitions,
+no self-loops, every status has an out-edge, every out-edge names an enum state,
+rejection always available, reopen policies. This automates the "block arbitrary
+status PATCH" requirement at the graph level. Actor/RBAC integration tests
+(department authority, admin, citizen) are DB-backed and are deferred to a
+provisioned test database — they are not fabricated.
+
+## Phase 4-10 (Status update — this revision)
+
+### IMPLEMENTED (real, DB-backed, tested)
+
+- **Phase 4 — Real intelligence pipeline.** Reuses existing real, DB-backed
+  intelligence: image perceptual hashing (`imageHash`), AI analysis +
+  classification + confidence + explanation (`intelligence/ai`), duplicate +
+  incident clustering (`intelligence/duplicates`), and an explainable priority
+  engine (`intelligence/priority`). Orchestrated by
+  `runReportIntelligence()` and exposed via `POST /api/issues/[id]/analyze`.
+  No fake scores — unavailable inputs are flagged, not invented.
+- **Phase 7 — Automated escalation engine** (`src/lib/escalation/`).
+  - Canonical 4-level ladder (`levels.ts`, shared constant, not scattered strings).
+  - Configurable, DB-backed `EscalationRule` model with a condition bag
+    (`slaPctGte`, `statusNotIn`) plus severity/priority gates.
+  - Pure, unit-tested rule evaluator (`rules.ts`) + idempotent DB engine
+    (`engine.ts`): never re-escalates a level already reached, transactional
+    audit + notification on creation. Wired into citizen dispute (`reopenIssue`)
+    so a dispute triggers evaluation. (Automatic *periodic* evaluation awaits
+    the SLA worker / Redis — see blockers.)
+- **Phase 10 — Community votes + civic karma** (`src/lib/community/`).
+  - `Vote` model (CONFIRM / DISPUTE / SUPPORT / DUPLICATE) with a
+    `unique(issueId, userId, type)` constraint — duplicate votes impossible
+    even under a race; idempotent re-casts return the existing vote.
+  - `POST/GET /api/issues/[id]/votes` canonical endpoints with a dedicated
+    `voting` rate limiter (anti-brigade).
+  - `KarmaEvent` auditable ledger + `applyKarmaEvent()` (idempotent via unique
+    `dedupeKey`, so retried events never double-award) + `calculateKarma()`.
+    Karma is derived only from trusted system events; clients can never set
+    `User.karmaScore` directly.
+
+### BLOCKED / REQUIRES EXTERNAL INFRASTRUCTURE (never faked)
+
+- **Phase 5 — Redis + BullMQ workers.** No `redis-server`, no Docker, no
+  `bullmq` package in this environment. The pipeline therefore still runs via
+  next/server `after()` + resume-on-read (`ensureReportIntelligence`), which is
+  explicitly NOT the production primary. AI/Duplicate/Priority/Notification/SLA/
+  Verification/Analytics workers, retry policy, dead-letter queue all require
+  Redis — documented, not fabricated.
+- **Phase 6 — SLA worker + Promise/SLA deadline engine.** The `Promise` model
+  exists (single `deadline`), and the escalation engine's SLA-elapsed
+  condition works, but the periodic SLA worker and ON_TRACK/AT_RISK/BREACHED
+  state engine need a scheduler (Redis).
+- **Phase 8 — Computer vision verification.** No CV provider/model is
+  configured. No `CVVerification` model or fabricated confidence is emitted;
+  documented as an infrastructure/provider requirement.
+- **Phase 9 —Before/After + CV-fronted citizen verification UI.** The citizen
+  verify action (`POST /api/issues/[id]/verify`, YES→VERIFIED, NO→reopen+escalate)
+  is real and ownership-enforced; the CV-annotated before/after review UI is
+  gated on the Phase 8 provider.
 
 ## Phase 2 Update (this revision — Real Report → Database Pipeline)
 
@@ -48,11 +198,11 @@ notification. Status overrides applied on top of the Phase 1 table:
 - **Audit trail** — WORKING (waiting) is extended: `REPORT_CREATED` on every
   successful submission, `STATUS_CHANGED` on PATCH.
 
-Still MOCK / MISSING (unchanged, future phases): AI classification/severity,
-cross-report flame-similarity clustering, verification CV meters, live incident
-map, hotspot/risk engine, promise SLA engine + deadlines, escalations, community
-votes, settings persistence, broken-promise showcase, civic karma,
-real-time/websockets, email/push notifications, background workers.
+Still MOCK / MISSING (unchanged, future phases): verification CV meters,
+live incident map, hotspot/risk engine, promise SLA engine + deadlines,
+escalations engine, community votes, settings persistence,
+broken-promise showcase, civic karma, real-time/websockets,
+email/push notifications, background queue/workers.
 
 ## Phase 1 Update (this revision — Core Backend & Database Foundation)
 
@@ -88,11 +238,11 @@ Status overrides applied to the Phase 0 table below:
 - **Geocoding / coordinate capture** — MISSING → **PARTIAL** (lat/lng → PostGIS
   `geography(Point,4326)` on intake; no geocoder yet).
 
-Still MOCK / MISSING (unchanged, Phase 2+): AI classification/severity,
-duplicate detection, verification CV meters, live incident map, hotspot/risk
-engine, promise SLA engine + deadlines, escalations, community votes, settings
-persistence, broken-promise showcase, civic karma, real-time/websockets,
-email/push notifications, background workers.
+Still MOCK / MISSING (see audited table below): verification CV meters,
+live incident map, hotspot/risk engine, promise SLA engine + deadlines,
+settings persistence, broken-promise showcase, real-time/websockets,
+email/push notifications, background queue/workers. (Escalation engine,
+community votes, and civic karma are now real DB-backed logic — updated above.)
 
 ## Feature Audit
 
@@ -127,24 +277,24 @@ email/push notifications, background workers.
 | Risk scores / confidence / scan countdown       | MOCK     | Constants (`84`, `86%`, `1,204`, `NEXT_SCAN`) + `setInterval`            | `PredictiveIntelligenceSection.tsx`                                                  | Model inference + scheduled scans                               |
 | Promise ledger (records + deadlines)            | MOCK     | Hardcoded `PROMISES` array                                              | `src/app/dashboard/promises/page.tsx:8-15`; `PromiseLedgerSection.tsx`                | Promise/SLA engine + DB                                         |
 | Promise deadline countdown                      | MOCK     | Client `setInterval` from a pretend 18h 42m budget (labelled DEMO)       | `PromiseLedgerSection.tsx` (`CountdownDemo`)                                         | Real deadline from server, web push at thresholds               |
-| Escalation engine                               | MOCK     | Hardcoded `ESCALATIONS` array                                           | `src/app/dashboard/escalations/page.tsx:10-14`                                        | Rules engine + notifications                                    |
-| Community verification                          | MOCK     | Hardcoded `FEEDBACK` percentages                                         | `src/app/dashboard/community/page.tsx:7-12`; issue detail page                        | DB votes + aggregation                                          |
+| Escalation engine                               | PARTIAL  | **Real** DB-backed `EscalationRule` + Level ladder + idempotent engine (`src/lib/escalation/`); dashboard still shows hardcoded display array, periodic worker blocked (no Redis) | `src/lib/escalation/{levels,rules,engine}.ts`; `src/app/dashboard/escalations/page.tsx` | Attach periodic scheduler + DB-driven dashboard display          |
+| Community verification                          | PARTIAL  | **Real** DB-backed `Vote` rollups via `GET/POST /api/issues/[id]/votes` (`src/lib/community/votes.ts`); dashboard still shows hardcoded `FEEDBACK` | `src/lib/community/votes.ts`; `src/app/api/issues/[id]/votes/route.ts`; `src/app/dashboard/community/page.tsx` | Drive the dashboard from live vote aggregation                 |
 | Authority assignment                            | MOCK     | Hardcoded authority strings                                             | `dashboard/issues/[id]/page.tsx:32`; `promises/page.tsx`; `PromiseLedgerSection.tsx`    | Authority registry + RBAC                                       |
 | Settings / profile                              | MOCK     | `defaultValue` static inputs; no persistence                            | `src/app/dashboard/settings/page.tsx`                                               | Auth-backed user profile                                        |
 | Broken-promise marketing section                | MOCK     | Hardcoded `RESOLVED_STORIES`/promise facts                                | `src/components/landing/BrokenPromiseSection.tsx`                                    | Real outcomes from verified issues                              |
-| Report submission persistence                   | MISSING  | —                                                                        | (no API route, no DB)                                                                | `POST /api/issues` + database                                   |
-| Citizen authentication / sessions               | MISSING  | (`next-auth` installed, zero config)                                     | —                                                                                     | NextAuth v5 + middleware                                        |
+| Report submission persistence                   | WORKING  | **Real** multipart/file/custom evidence → `POST /api/issues` → Postgres | `src/app/api/issues/route.ts` + `[id]`; `src/lib/issues/http.ts`, `query.ts`        | Preserve canonical `/api/issues` path                          |
+| Citizen authentication / sessions               | WORKING  | **Real** NextAuth (JWT + DB user) + middleware                           | `src/app/api/auth/[...nextauth]`; `src/proxy.ts`                                     | Gated role picker on signup (pending sign-in rate-limit fix)    |
 | Image / video upload & storage                  | MISSING  | Drag-drop zone only, no handler                                          | `src/app/report/page.tsx:116-129`                                                    | Multipart upload API + object storage                           |
 | Geocoding / coordinate capture                  | MISSING  | Free-text location only; coords hardcoded                               | `src/app/report/page.tsx:107`                                                        | Geocoder on intake + reverse geocode for maps                   |
 | Jurisdiction detection                          | MISSING  | —                                                                        | —                                                                                     | Ward/zone → department lookup                                   |
 | Heatmaps (density/severity/priority/resolved)   | MISSING  | —                                                                        | —                                                                                     | H3 geospatial aggregation + tiles                              |
-| Civic karma                                    | MISSING  | Marketing copy only                                                     | —                                                                                     | User trust scoring model                                       |
+| Civic karma                                    | PARTIAL  | **Real** `KarmaEvent` ledger + idempotent `applyKarmaEvent()` + `calculateKarma()` (`src/lib/community/karma.ts`); no UI yet                      | `src/lib/community/karma.ts`                                    | Add karma UI + touchpoints that award events                    |
 | Live real-time tracking / websockets            | MISSING  | (`socket.io-client` installed, unused)                                  | —                                                                                     | Event stream + socket server                                   |
 | Notifications (in-app/email/push)               | MISSING  | —                                                                        | —                                                                                     | Notifier service                                                |
 | Blockchain / tamper-evident ledger              | MISSING  | —                                                                        | —                                                                                     | Event hash chain + optional anchoring                           |
-| Audit trail                                    | MISSING  | —                                                                        | —                                                                                     | Append-only event log                                          |
-| Background jobs / workers                       | MISSING  | —                                                                        | —                                                                                     | Queue (BullMQ/Redis) + CI/verification workers                  |
-| Real database                                  | MISSING  | (`prisma`/`@prisma/client` installed, no schema, no `prisma/` dir)       | —                                                                                     | PostgreSQL + PostGIS schema + migrations                        |
+| Audit trail                                    | PARTIAL  | **Real** `Audit` + `IssueNote` event log for persisted issues (`IssueDetailView`) | `src/lib/issues/query.ts`; schema `Audit`/`IssueNote`                                | Enable on remaining UI surfaces + blocking/action history        |
+| Background jobs / workers                       | MISSING  | (pipeline runs via next/server `after()` as non-primary fallback)        | `src/lib/server/intelligence/`                                                       | Queue (BullMQ/Redis) + CI/verification workers                  |
+| Real database                                  | WORKING  | **Real** PostgreSQL 16 + PostGIS; Prisma models + migrations            | `prisma/schema.prisma`; `prisma/migrations/*`                                        | Preserve                                                       |
 
 ## Notes
 

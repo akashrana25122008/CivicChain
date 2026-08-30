@@ -14,18 +14,41 @@ export const authConfig = {
     signIn: '/login',
   },
   providers: [],
+  cookies: {
+    sessionToken: {
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        // Force the session cookie to HTTPS in production (deployed/hosted).
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
   callbacks: {
     jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
         token.role = (user as { role?: string }).role ?? 'CITIZEN';
+        token.name = (user as { name?: string | null }).name ?? null;
+        token.email = (user as { email?: string | null }).email ?? null;
       }
       return token;
     },
     session({ session, token }) {
-      if (session.user && token.id) {
-        session.user.id = token.id as string;
-        session.user.role = (token.role as string) ?? 'CITIZEN';
+      // Cast through a locally-defined mutable shape: Auth.js's bundled types
+      // are stricter (non-nullable) than the optional fields we add at runtime.
+      const user = session.user as unknown as {
+        id?: string;
+        role?: string;
+        name?: string | null;
+        email?: string | null;
+      };
+      if (user && token.id) {
+        user.id = token.id as string;
+        user.role = (token.role as string) ?? 'CITIZEN';
+        user.name = (token.name as string | undefined) ?? null;
+        user.email = (token.email as string | undefined) ?? null;
       }
       return session;
     },

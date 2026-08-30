@@ -14,11 +14,13 @@ import {
   ArrowRight,
   History,
   Scale,
+  MapPin,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/dashboard/PageHeader';
 import { StatCard } from '@/components/dashboard/StatCard';
+import { CivicMapFrame } from '@/components/dashboard/CivicMapFrame';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { ErrorState } from '@/components/dashboard/ErrorState';
 import { EmptyState } from '@/components/dashboard/EmptyState';
@@ -99,6 +101,24 @@ export default function DepartmentDashboard() {
         <StatCard label="Broken Promises" value={stats?.promisesBroken ?? '…'} loading={isLoading} icon={BadgeCheck} tone="amber"
           sub={stats?.promisesBroken ? 'deadlines missed' : 'no missed deadlines'} />
       </div>
+
+      <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle as="h2" className="text-lg flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Assigned Work Map
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="aspect-[16/6]">
+            <CivicMapFrame
+              title="Assigned work map"
+              location={{ queryLabel: 'Mathura, Uttar Pradesh' }}
+              zoom={11}
+              mapHref="/map"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       {error && <ErrorState onRetry={() => mutate()} />}
 

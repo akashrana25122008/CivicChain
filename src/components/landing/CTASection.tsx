@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
+import { AuthActions } from './AuthActions';
 import { ArrowRight, FileText, BarChart3 } from 'lucide-react';
 import { DUR, EASE } from '@/lib/motion';
 
@@ -47,31 +48,7 @@ export function CTASection() {
             viewport={{ once: true, amount: 0.4 }}
             transition={{ duration: DUR.section, delay: 0.25, ease: EASE.out }}
           >
-            <motion.div
-              whileHover={reduce ? undefined : { scale: 1.04, y: -1 }}
-              whileTap={reduce ? undefined : { scale: 0.97 }}
-              transition={{ duration: DUR.fast, ease: EASE.out }}
-            >
-              <Button size="lg" asChild>
-                <Link href="/report" className="group">
-                  <FileText className="w-5 h-5 mr-2" />
-                  Report a Civic Issue
-                  <ArrowRight className="w-5 h-5 ml-2 transition-transform duration-200 group-hover:translate-x-1" />
-                </Link>
-              </Button>
-            </motion.div>
-            <motion.div
-              whileHover={reduce ? undefined : { scale: 1.03, y: -1 }}
-              whileTap={reduce ? undefined : { scale: 0.97 }}
-              transition={{ duration: DUR.fast, ease: EASE.out }}
-            >
-              <Button variant="secondary" size="lg" asChild>
-                <Link href="/dashboard" className="group">
-                  <BarChart3 className="w-5 h-5 mr-2" />
-                  View Dashboard
-                </Link>
-              </Button>
-            </motion.div>
+            <AuthActions />
           </motion.div>
 
           <motion.div

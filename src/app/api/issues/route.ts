@@ -5,10 +5,11 @@ import { queryIssueList } from '@/lib/issues/query';
 import { createReportHttp } from '@/lib/issues/http';
 
 /**
- * /api/issues — Phase 1 community surface.
+ * /api/issues — community feed + creation surface.
  * GET: authenticated catalogue feed (shared query implementation).
- * POST: report creation; delegates to the shared Phase 2 pipeline used by
- * POST /api/reports (see src/lib/issues/http.ts) — one implementation.
+ * POST: report creation; delegates to the shared pipeline used by
+ * POST /api/reports (see src/lib/issues/http.ts) — one implementation,
+ * covering report, evidence, AI analysis queue, duplicate sweep and priority.
  */
 
 export async function GET(request: NextRequest) {

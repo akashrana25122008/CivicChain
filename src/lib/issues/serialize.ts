@@ -1,26 +1,36 @@
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import {
+  AI_CATEGORY_LABELS,
   CATEGORY_LABELS,
+  INFRASTRUCTURE_TYPE_LABELS,
+  PRIORITY_LEVEL_LABELS,
+  SAFETY_RISK_LABELS,
   SEVERITY_LABELS,
   STATUS_LABELS,
   toDisplayStatus,
 } from '@/lib/issues/mapping';
 import {
   AuditAction,
+  type AIAnalysis,
   type AuditLog,
   type Authority,
   type Evidence,
+  type Incident,
   type Issue,
   type Promise as CivicPromise,
 } from '../../../generated/prisma/client';
 import type {
+  AiAnalysisItem,
   EvidenceItem,
   EvidenceQueueItem,
   EvidenceVerification,
+  IncidentSummary,
   IssueDetail,
   IssueListItem,
+  PriorityBreakdown,
   TimelineItem,
 } from './types';
+import { computePriorityScore, evidenceConfidenceScore } from '@/lib/server/intelligence/priority/engine';
 
 /** Evidence row optionally loaded with its full verification history. */
 type EvidenceWithVerifications = Evidence & {
@@ -33,14 +43,46 @@ type EvidenceWithVerifications = Evidence & {
   }>;
 };
 
+/** Issue as loaded by the report handlers with Phase 3/4 relations included. */
+export type SerializerIssue = Issue & {
+  aiAnalysis?: AIAnalysis | null;
+  incident?: (Incident & {
+    issues?: Array<{ id: string; publicId: string; status: string }>;
+  }) | null;
+};
+
 interface IssueRowInput {
-  issue: Issue;
+  issue: SerializerIssue;
   authority?: Authority | null;
   promise?: CivicPromise | null;
   evidence?: EvidenceWithVerifications[];
   auditLogs?: AuditLog[];
   viewerId?: string | null;
   reporter?: { name: string | null; email: string } | null;
+  /**
+   * Allow the viewer to see the reporter's identity. Defaults to only the
+   * issue's owner (privacy: reporter name/email must not leak to the public
+   * community feed). Staff surfaces (department/admin) set this explicitly.
+   */
+  revealReporter?: boolean;
+  /**
+   * Allow the viewer to see the reporter's confidential follow-up contact.
+   * Defaults to only the issue's owner. Any community/transparency view keeps
+   * this hidden.
+   */
+  revealContact?: boolean;
+  /**
+   * Lifecycle statuses the viewer is authorized to request next, derived from
+   * the transition graph + RBAC (see allowedTransitionsFor). Empty = read-only.
+   */
+  allowedTransitions?: string[];
+}
+
+/** Whether a viewer may see an issue reporter's identity/contact. */
+function canSeeReporterData(input: IssueRowInput, field: 'reporter' | 'contact'): boolean {
+  if (input.revealContact === true || input.revealReporter === true) return true;
+  if (!input.viewerId) return false;
+  return input.issue.reporterId === input.viewerId;
 }
 
 export function serializeIssueListRow(input: IssueRowInput): IssueListItem {
@@ -58,6 +100,7 @@ export function serializeIssueListRow(input: IssueRowInput): IssueListItem {
     severity: severity ?? null,
     severityLabel: severity ? SEVERITY_LABELS[severity] : null,
     priority: issue.priority,
+    priorityLevel: issue.priorityLevel ?? null,
     location: issue.location,
     authority: authority?.name ?? authority?.department ?? null,
     promiseLabel: promise
@@ -65,13 +108,113 @@ export function serializeIssueListRow(input: IssueRowInput): IssueListItem {
       : null,
     reportCount: 1,
     createdAt: issue.createdAt.toISOString(),
+    updatedAt: issue.updatedAt.toISOString(),
     timeLabel: formatRelativeTime(issue.createdAt),
+    promiseDeadline: promise?.deadline?.toISOString() ?? null,
     byCurrentUser: viewerId ? issue.reporterId === viewerId : false,
     hasLocation: issue.latitude !== null && issue.longitude !== null,
     latitude: issue.latitude,
     longitude: issue.longitude,
     accuracy: issue.accuracy,
-    reporterName: reporter?.name ?? reporter?.email ?? null,
+    reporterName: canSeeReporterData(input, 'reporter')
+      ? (reporter?.name ?? reporter?.email ?? null)
+      : null,
+    incidentId: issue.incidentId ?? null,
+  };
+}
+
+function toAiAnalysisItem(
+  analysis: NonNullable<AIAnalysis>,
+): AiAnalysisItem {
+  return {
+    status: analysis.status,
+    category: analysis.category ?? null,
+    categoryLabel: analysis.category ? AI_CATEGORY_LABELS[analysis.category] ?? analysis.category : null,
+    severity: analysis.severity ?? null,
+    severityLabel: analysis.severity ? SEVERITY_LABELS[analysis.severity] ?? analysis.severity : null,
+    confidence: analysis.confidence ?? null,
+    safetyRisk: analysis.safetyRisk ?? null,
+    safetyRiskLabel: analysis.safetyRisk ? SAFETY_RISK_LABELS[analysis.safetyRisk] ?? analysis.safetyRisk : null,
+    infrastructureType: analysis.infrastructureType ?? null,
+    infrastructureTypeLabel: analysis.infrastructureType
+      ? INFRASTRUCTURE_TYPE_LABELS[analysis.infrastructureType] ?? analysis.infrastructureType
+      : null,
+    reasoningSummary: analysis.reasoningSummary ?? null,
+    modelName: analysis.modelName ?? null,
+    errorMessage: analysis.errorMessage ?? null,
+    analyzedAt: analysis.completedAt?.toISOString() ?? null,
+  };
+}
+
+type SerializerIncident = NonNullable<Incident> & {
+  issues?: Array<{ id: string; publicId: string; status: string }>;
+};
+
+function toIncidentSummary(
+  incident: SerializerIncident,
+): IncidentSummary {
+  const members = incident.issues ?? [];
+  return {
+    id: incident.id,
+    publicId: incident.publicId,
+    title: incident.title,
+    memberCount: members.length,
+    memberPublicIds: members.map((m) => m.publicId),
+  };
+}
+
+function toPriorityBreakdown(
+  issue: SerializerIssue,
+  evidence: EvidenceWithVerifications[] | undefined,
+): PriorityBreakdown {
+  if (issue.priority == null) return null;
+  if (issue.aiAnalysis && issue.aiAnalysis.status === 'PROCESSING') return null;
+  const items = evidence ?? [];
+  const evidenceConfidence = evidenceConfidenceScore({
+    hasImage: items.some((e) => e.type === 'IMAGE'),
+    hasCoordinates: issue.latitude != null && issue.longitude != null,
+    accuracy: issue.accuracy,
+    evidenceCount: items.length,
+    descriptionLength: issue.description?.length ?? 0,
+  });
+  const result = computePriorityScore({
+    severity: issue.severity,
+    reports: Math.max(1, issue.incident?.issues?.length ?? 1),
+    safetyRisk: issue.aiAnalysis?.safetyRisk ?? null,
+    evidenceConfidence,
+  });
+  return {
+    score: result.score,
+    level: result.level,
+    components: result.components,
+    unavailable: result.unavailable,
+  };
+}
+
+function priorityLevelLabel(issue: SerializerIssue): string | null {
+  if (!issue.priorityLevel) return null;
+  return PRIORITY_LEVEL_LABELS[issue.priorityLevel] ?? issue.priorityLevel;
+}
+
+export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
+  const row = serializeIssueListRow(input);
+  const { issue, evidence } = input;
+  const ai = issue.aiAnalysis ?? null;
+  return {
+    ...row,
+    priorityLevel: priorityLevelLabel(issue),
+    description: issue.description,
+    latitude: issue.latitude,
+    longitude: issue.longitude,
+    contact: canSeeReporterData(input, 'contact') ? issue.contact : null,
+    evidence: (evidence ?? []).map(toEvidenceItem),
+    timeline: toTimeline(input.auditLogs),
+    aiConfidence: ai?.confidence ?? null, // back-compat alias
+    analysisStatus: ai?.status ?? null,
+    aiAnalysis: ai ? toAiAnalysisItem(ai) : null,
+    incident: issue.incident ? toIncidentSummary(issue.incident) : null,
+    priorityBreakdown: toPriorityBreakdown(issue, evidence),
+    allowedTransitions: input.allowedTransitions ?? [],
   };
 }
 
@@ -113,9 +256,8 @@ function latestVerification(ev: EvidenceWithVerifications): EvidenceVerification
   };
 }
 
-function toEvidenceItem(ev: EvidenceWithVerifications): EvidenceItem {
-  const isUploaded = ev.type !== 'URL';
-  return {
+export function toEvidenceItem(ev: EvidenceWithVerifications): EvidenceItem {
+  const isUploaded = ev.type !== 'URL';  return {
     id: ev.id,
     type: ev.type,
     // Uploaded files are private; the accessing route re-checks authorization.
@@ -140,20 +282,5 @@ export function serializeEvidenceQueueItem(
     issuePublicId: issue.publicId,
     issueTitle: issue.title,
     issueStatus: issue.status,
-  };
-}
-
-export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
-  const row = serializeIssueListRow(input);
-  const { issue, evidence } = input;
-  return {
-    ...row,
-    description: issue.description,
-    latitude: issue.latitude,
-    longitude: issue.longitude,
-    contact: issue.contact,
-    evidence: (evidence ?? []).map(toEvidenceItem),
-    timeline: toTimeline(input.auditLogs),
-    aiConfidence: null, // real AI analysis arrives in Phase 2 — never fabricated
   };
 }

@@ -1,13 +1,16 @@
 import { prisma } from '@/lib/db';
-import { serializeIssueListRow } from '@/lib/issues/serialize';
+import { serializeIssueListRow, toEvidenceItem } from '@/lib/issues/serialize';
 import {
   IssueCategory,
   IssueStatus,
+  PriorityLevel,
   type Prisma,
 } from '../../../generated/prisma/client';
 
 export interface IssueQueryParams {
   viewerId?: string | null;
+  /** Show reporter identity on the returned rows (staff surfaces only). */
+  revealReporter?: boolean;
   /** Scope the query to a single department (authorityId). */
   authorityId?: string | null;
   /** Scope the query to a single reporter. */
@@ -15,6 +18,12 @@ export interface IssueQueryParams {
   q?: string | null;
   category?: string | null;
   status?: string | null;
+  /** Filter by priority band (PriorityLevel: LOW | MEDIUM | HIGH | CRITICAL). */
+  priority?: string | null;
+  /** Inclusive lower bound on createdAt (ISO date). */
+  dateFrom?: string | null;
+  /** Inclusive upper bound on createdAt (ISO date). */
+  dateTo?: string | null;
   sort?: 'newest' | 'oldest' | 'updated';
   page?: number;
   pageSize?: number;
@@ -46,7 +55,7 @@ export async function queryIssueList(params: IssueQueryParams): Promise<IssueLis
   const rawPage = Number.isFinite(params.page) ? (params.page ?? 1) : 1;
   const page = Math.max(1, rawPage);
   const rawSize = Number.isFinite(params.pageSize) ? (params.pageSize ?? 100) : 100;
-  const pageSize = Math.min(100, Math.max(1, rawSize));
+  const pageSize = Math.min(200, Math.max(1, rawSize));
 
   const where: Prisma.IssueWhereInput = {};
   if (params.reporterId) where.reporterId = params.reporterId;
@@ -65,6 +74,24 @@ export async function queryIssueList(params: IssueQueryParams): Promise<IssueLis
       return { issues: [], total: 0, page, pageSize, pageCount: 0 };
     }
     where.category = params.category as IssueCategory;
+  }
+  if (params.priority) {
+    if (!PriorityLevel[params.priority as keyof typeof PriorityLevel]) {
+      return { issues: [], total: 0, page, pageSize, pageCount: 0 };
+    }
+    where.priorityLevel = params.priority as PriorityLevel;
+  }
+  if (params.dateFrom || params.dateTo) {
+    const from = params.dateFrom ? new Date(params.dateFrom) : null;
+    const to = params.dateTo ? new Date(params.dateTo) : null;
+    const validFrom = from ? !Number.isNaN(from.getTime()) : false;
+    const validTo = to ? !Number.isNaN(to.getTime()) : false;
+    if (validFrom || validTo) {
+      where.createdAt = {
+        ...(validFrom ? { gte: from! } : {}),
+        ...(validTo ? { lte: to! } : {}),
+      };
+    }
   }
 
   const term = params.q?.trim();
@@ -101,6 +128,7 @@ export async function queryIssueList(params: IssueQueryParams): Promise<IssueLis
         authority: issue.authority,
         promise: issue.promise,
         viewerId: params.viewerId,
+        revealReporter: params.revealReporter,
         reporter: issue.reporter,
       }),
     ),
@@ -109,4 +137,27 @@ export async function queryIssueList(params: IssueQueryParams): Promise<IssueLis
     pageSize,
     pageCount: Math.ceil(total / pageSize),
   };
+}
+
+const EVIDENCE_INCLUDE = {
+  verifications: {
+    orderBy: { createdAt: 'desc' as const },
+    include: { verifier: { select: { name: true, email: true } } },
+  },
+} as const;
+
+/**
+ * Canonical evidence listing for a single issue. Returns serialized evidence
+ * rows with the most recent verification attached, ordered by upload time.
+ */
+export async function queryIssueEvidence(input: {
+  issueId: string;
+  viewerId?: string | null;
+}): Promise<ReturnType<typeof toEvidenceItem>[]> {
+  const evidence = await prisma.evidence.findMany({
+    where: { issueId: input.issueId },
+    orderBy: { createdAt: 'asc' },
+    include: EVIDENCE_INCLUDE,
+  });
+  return evidence.map((ev) => toEvidenceItem(ev));
 }

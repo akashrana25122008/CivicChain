@@ -9,16 +9,16 @@ import { Button } from '@/components/ui/Button';
 import {
   MapPin,
   Clock,
-  Users,
+  Gauge,
   CheckCircle2,
   AlertTriangle,
   Brain,
-  Shield,
   ArrowLeft,
   FileText,
   Eye,
   Loader2,
   File,
+  GitMerge,
 } from 'lucide-react';
 import type { ApiIssueResponse } from '@/lib/issues/types';
 
@@ -50,25 +50,38 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
 
   const issue = data.issue;
 
+  const ai = issue.aiAnalysis;
+  const aiStatus = ai?.status ?? issue.analysisStatus ?? null;
+
   const statCards = [
     {
       label: issue.categoryLabel,
       value: issue.severityLabel ?? 'Pending AI',
-      sub: issue.severityLabel ? 'severity' : 'AI severity in Phase 2',
+      sub:
+        aiStatus === 'COMPLETED'
+          ? 'AI severity classification'
+          : aiStatus === 'FAILED'
+            ? 'AI unavailable — manual review'
+            : aiStatus === 'PROCESSING' || aiStatus === 'PENDING'
+              ? 'AI severity in progress'
+              : 'AI severity pending',
       icon: AlertTriangle,
       color: 'text-amber-500',
     },
     {
-      label: 'Affected',
-      value: 'Phase 2',
-      sub: 'community analytics not live',
-      icon: Users,
+      label: 'Priority',
+      value: issue.priorityLevel ?? 'Pending',
+      sub:
+        issue.priority != null
+          ? `priority score ${Math.round(issue.priority)}/100`
+          : 'computed after analysis',
+      icon: Gauge,
       color: 'text-brand-500',
     },
     {
       label: 'Reports',
-      value: String(issue.reportCount),
-      sub: issue.reportCount === 1 ? 'this report' : 'merged reports',
+      value: String(issue.incident?.memberCount ?? issue.reportCount),
+      sub: (issue.incident?.memberCount ?? issue.reportCount) === 1 ? 'this report' : 'reports in incident',
       icon: FileText,
       color: 'text-violet-500',
     },
@@ -211,37 +224,145 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
                   <p className="font-medium text-neutral-900 dark:text-white">{issue.categoryLabel}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
-                  <p className="text-xs text-neutral-500 mb-1">AI Confidence</p>
-                  <p className="font-mono font-medium text-brand-600 dark:text-brand-400">
-                    {issue.aiConfidence !== null ? `${issue.aiConfidence}%` : 'Pending (Phase 2)'}
-                  </p>
+                  <p className="text-xs text-neutral-500 mb-1">Status</p>
+                  <p className="font-medium text-neutral-900 dark:text-white">{issue.statusLabel}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
                   <p className="text-xs text-neutral-500 mb-1">Department</p>
                   <p className="font-medium text-neutral-900 dark:text-white">{issue.authority ?? 'To be assigned'}</p>
                 </div>
-                <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
-                  <p className="text-xs text-neutral-500 mb-1">Status</p>
-                  <p className="font-medium text-neutral-900 dark:text-white">{issue.statusLabel}</p>
+                <div className={cn(
+                  'p-3 rounded-lg border',
+                  aiStatus === 'COMPLETED'
+                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                    : aiStatus === 'FAILED'
+                      ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                      : 'bg-neutral-50 dark:bg-dark-bg border-neutral-200 dark:border-dark-border'
+                )}>
+                  <p className="text-xs text-neutral-500 mb-1 flex items-center gap-1.5">
+                    AI classification
+                    {aiStatus === 'PROCESSING' || aiStatus === 'PENDING' ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-brand-500" />
+                    ) : null}
+                  </p>
+                  <p className="font-mono font-medium text-brand-600 dark:text-brand-400">
+                    {aiStatus === 'COMPLETED'
+                      ? `${Math.round((ai?.confidence ?? 0) * 100)}% confidence`
+                      : aiStatus === 'FAILED'
+                        ? 'Unavailable'
+                        : aiStatus === 'PROCESSING'
+                          ? 'Analyzing…'
+                          : 'Pending'}
+                  </p>
                 </div>
               </div>
+
+              {aiStatus === 'COMPLETED' && ai && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                      <p className="text-xs text-neutral-500 mb-1">AI severity</p>
+                      <p className="font-medium text-neutral-900 dark:text-white">{ai.severityLabel ?? '—'}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                      <p className="text-xs text-neutral-500 mb-1">Safety risk</p>
+                      <p className="font-medium text-neutral-900 dark:text-white">{ai.safetyRiskLabel ?? '—'}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                      <p className="text-xs text-neutral-500 mb-1">Infrastructure</p>
+                      <p className="font-medium text-neutral-900 dark:text-white">{ai.infrastructureTypeLabel ?? '—'}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                      <p className="text-xs text-neutral-500 mb-1">Model</p>
+                      <p className="font-medium text-neutral-900 dark:text-white">{ai.modelName ?? '—'}</p>
+                    </div>
+                  </div>
+                  {ai.reasoningSummary && (
+                    <div className="p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                      <p className="text-xs text-neutral-500 mb-1">AI reasoning</p>
+                      <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{ai.reasoningSummary}</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {aiStatus === 'FAILED' && (
+                <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    {ai?.errorMessage || 'The AI analysis service did not respond.'} This report remains visible and is handled through the standard accountability workflow — no simulated scores are shown.
+                  </p>
+                </div>
+              )}
+
+              {issue.priorityBreakdown && (
+                <div className="mt-2 p-3 rounded-lg bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                  <p className="text-xs text-neutral-500 mb-2">
+                    Priority breakdown — {Math.round(issue.priorityBreakdown.score)}/100 (
+                    {issue.priorityBreakdown.level})
+                  </p>
+                  <div className="space-y-1.5">
+                    {issue.priorityBreakdown.components.map((c) => (
+                      <div key={c.key} className="flex items-center gap-3 text-xs">
+                        <span className="w-40 flex-none text-neutral-500">{c.label}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-neutral-200 dark:bg-dark-border overflow-hidden">
+                          <div
+                            className={cn(
+                              'h-full rounded-full',
+                              c.origin === 'unavailable' ? 'bg-neutral-400' : 'bg-brand-500'
+                            )}
+                            style={{ width: `${c.score}%` }}
+                          />
+                        </div>
+                        <span className="w-8 text-right font-mono text-neutral-600 dark:text-neutral-400">
+                          {c.origin === 'unavailable' ? 'n/a' : Math.round(c.score)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {issue.priorityBreakdown.unavailable.length > 0 && (
+                    <p className="mt-2 text-[11px] text-neutral-500">
+                      Not available: {issue.priorityBreakdown.unavailable.join(', ')} — shown as neutral, not invented.
+                    </p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader>
               <CardTitle as="h2" className="text-lg flex items-center gap-2">
-                <Shield className="w-5 h-5 text-emerald-500" />
-                AI Verification
+                <GitMerge className="w-5 h-5 text-brand-500" />
+                Duplicate Detection & Incident
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="p-4 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  AI-assisted resolution verification launches in <strong>Phase 2</strong>. No simulated verification scores are shown.
-                </p>
-              </div>
+              {issue.incident ? (
+                <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                  <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                    This report is part of incident{' '}
+                    <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+                      {issue.incident.publicId}
+                    </span>{' '}
+                    — {issue.incident.memberCount} report(s) covering the same issue were automatically grouped.
+                  </p>
+                  {issue.incident.memberCount > 1 && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Incident members: {issue.incident.memberPublicIds.join(', ')}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    No duplicate incident was detected for this report. It stands on its own until other reports pointing to the same issue are found.
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-neutral-500 mt-4 italic">
+                Fragments use real signals — location, description, image similarity, report timing and category. Thresholds are configurable and never replace formal human review.
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -301,7 +422,7 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
               <div className="p-4 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-neutral-400 mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Community verification is part of <strong>Phase 2</strong>. The baseline&apos;s placeholder percentages were removed.
+                  Community verification is a <strong>future phase</strong>. The baseline&apos;s placeholder percentages were removed and are not simulated.
                 </p>
               </div>
               <p className="text-xs text-neutral-500 mt-4 italic">

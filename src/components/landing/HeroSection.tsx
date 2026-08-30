@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
+import { AuthActions } from './AuthActions';
 import { CivicHero3DWrapper } from '@/components/3d/CivicHero3D';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { ArrowRight, Activity, Target, Eye, Shield } from 'lucide-react';
@@ -154,27 +155,7 @@ export function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: DUR.section, delay: delay(0.42), ease: EASE.out }}
           >
-            <motion.div
-              whileHover={reduce ? undefined : { scale: 1.04, y: -1 }}
-              whileTap={reduce ? undefined : { scale: 0.97 }}
-              transition={{ duration: DUR.fast, ease: EASE.out }}
-            >
-              <Button size="lg" asChild>
-                <Link href="/report" className="group">
-                  Report a Civic Issue
-                  <ArrowRight className="w-5 h-5 ml-2 transition-transform duration-200 group-hover:translate-x-1" />
-                </Link>
-              </Button>
-            </motion.div>
-            <motion.div
-              whileHover={reduce ? undefined : { scale: 1.03, y: -1 }}
-              whileTap={reduce ? undefined : { scale: 0.97 }}
-              transition={{ duration: DUR.fast, ease: EASE.out }}
-            >
-              <Button variant="secondary" size="lg" asChild>
-                <Link href="/dashboard">Explore Civic Intelligence</Link>
-              </Button>
-            </motion.div>
+            <AuthActions />
           </motion.div>
 
           {/* Stage: supporting badges */}

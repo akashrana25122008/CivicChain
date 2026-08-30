@@ -2,8 +2,9 @@
 
 import { useCallback, useState } from 'react';
 import useSWR from 'swr';
-import { Search } from 'lucide-react';
+import { Search, ShieldCheck, Check, X } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/dashboard/PageHeader';
 import { TableFrame, Pagination } from '@/components/dashboard/TableFrame';
 
@@ -15,12 +16,27 @@ interface AdminUser {
   email: string;
   role: string;
   roleLabel: string;
+  requestedRole: string | null;
+  roleStatus: string;
+  authority: { id: string; name: string; department: string } | null;
   karmaScore: number;
   createdAt: string;
   timeLabel: string;
   reportsCount: number;
   notificationsUnread: number;
 }
+
+interface Department {
+  id: string;
+  name: string;
+  department: string;
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  CITIZEN: 'Citizen',
+  AUTHORITY: 'Municipal Department',
+  ADMIN: 'Administrator',
+};
 
 const ROLE_FILTERS = [
   { value: '', label: 'All roles' },
@@ -47,6 +63,13 @@ export default function AdminUsers() {
     { keepPreviousData: true },
   );
 
+  const { data: pendingData, mutate: mutatePending } = useSWR<{ users: AdminUser[]; departments: Department[] }>(
+    '/api/admin/users?pending=true&pageSize=100',
+    fetcher,
+  );
+  const pending = pendingData?.users ?? [];
+  const departments = pendingData?.departments ?? [];
+
   const onQ = (value: string) => {
     setQ(value);
     setPage(1);
@@ -57,6 +80,20 @@ export default function AdminUsers() {
   };
   const onPage = useCallback((next: number) => setPage(next), []);
 
+  const review = async (
+    id: string,
+    action: 'approve' | 'reject',
+    extra?: { authorityId?: string; departmentName?: string },
+  ) => {
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, action, ...extra }),
+    });
+    mutate();
+    mutatePending();
+  };
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader
@@ -64,6 +101,28 @@ export default function AdminUsers() {
         title="Users"
         description="Every account on the platform, with live report and notification counts."
       />
+
+      {pending.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 overflow-hidden">
+          <div className="px-5 py-4 flex items-center gap-2 border-b border-amber-200/70 dark:border-amber-900/40">
+            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-white">
+              Pending role approvals ({pending.length})
+            </h2>
+            <span className="text-xs text-neutral-500">Department and Admin requests awaiting review.</span>
+          </div>
+          <div className="divide-y divide-amber-200/40 dark:divide-amber-900/30">
+            {pending.map((user) => (
+              <PendingRequest
+                key={user.id}
+                user={user}
+                departments={departments}
+                onApprove={review}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3">
         <div className="relative flex-1 min-w-0">
@@ -134,6 +193,96 @@ export default function AdminUsers() {
             </tr>
           ))}
         </TableFrame>
+      </div>
+    </div>
+  );
+}
+
+function PendingRequest({
+  user,
+  departments,
+  onApprove,
+}: {
+  user: AdminUser;
+  departments: Department[];
+  onApprove: (id: string, action: 'approve' | 'reject', extra?: { authorityId?: string; departmentName?: string }) => void;
+}) {
+  const [authorityId, setAuthorityId] = useState('');
+  const [newDept, setNewDept] = useState(false);
+  const [deptName, setDeptName] = useState('');
+
+  const isAuthority = user.requestedRole === 'AUTHORITY';
+
+  const approveExtra =
+    isAuthority && !newDept
+      ? { authorityId: authorityId || departments[0]?.id }
+      : isAuthority && newDept
+        ? { departmentName: deptName }
+        : undefined;
+
+  return (
+    <div className="flex flex-col lg:flex-row lg:items-center gap-3 px-5 py-4">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-neutral-900 dark:text-white">
+          {user.name ?? user.email}
+          <span className="ml-2 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+            wants {ROLE_LABEL[user.requestedRole ?? ''] ?? user.requestedRole}
+          </span>
+        </p>
+        <p className="text-xs text-neutral-500 mt-0.5">{user.email}</p>
+
+        {isAuthority && (
+          <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+            {!newDept ? (
+              <select
+                value={authorityId}
+                onChange={(e) => setAuthorityId(e.target.value)}
+                className="rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                aria-label="Link department"
+              >
+                {departments.length === 0 && <option value="">No departments yet</option>}
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={deptName}
+                onChange={(e) => setDeptName(e.target.value)}
+                placeholder="New department name"
+                className="rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-1.5 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                aria-label="New department name"
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => { setNewDept((v) => !v); setDeptName(''); }}
+              className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
+            >
+              {newDept ? 'Link an existing department' : 'Create a new department'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 lg:shrink-0">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => onApprove(user.id, 'approve', approveExtra)}
+        >
+          <Check className="w-3.5 h-3.5 mr-1" />
+          Approve
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onApprove(user.id, 'reject')}
+          className="text-red-600 dark:text-red-400"
+        >
+          <X className="w-3.5 h-3.5 mr-1" />
+          Reject
+        </Button>
       </div>
     </div>
   );

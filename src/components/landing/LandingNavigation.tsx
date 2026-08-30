@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { useSession } from 'next-auth/react';
 import {
   FileText,
   Gavel,
@@ -20,8 +21,12 @@ import {
   Menu,
   X,
   ChevronDown,
+  LogIn,
+  UserPlus,
+  ArrowRight,
 } from 'lucide-react';
 import { DUR, EASE } from '@/lib/motion';
+import { homeFor } from '@/components/layout/workspaceNav';
 
 type NavChild = {
   label: string;
@@ -74,6 +79,65 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 const SECTION_IDS = ['solution', 'features', 'promise-ledger', 'ai-verification', 'civic-map', 'predictive', 'dashboard'];
+
+function LandingNavActions({ mobile }: { mobile?: boolean }) {
+  const { data: session, status } = useSession();
+  const isLoading = status === 'loading';
+  const isAuthenticated = !!session?.user;
+  const role = session?.user?.role;
+
+  if (isLoading) {
+    return (
+      <div className={mobile ? 'flex flex-col gap-2' : 'flex items-center gap-2'}>
+        <Button size={mobile ? 'lg' : 'sm'} disabled className="opacity-50 w-full">
+          <span className="w-4 h-4 mr-2 animate-spin border-2 border-current border-t-transparent rounded-full" />
+          Loading…
+        </Button>
+        <Button variant="secondary" size={mobile ? 'lg' : 'sm'} disabled className="opacity-50 w-full">
+          Loading…
+        </Button>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className={mobile ? 'flex flex-col gap-2' : 'flex items-center gap-2'}>
+        <Button size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
+          <Link href="/register" className="group flex items-center justify-center gap-2">
+            <UserPlus className={mobile ? 'w-5 h-5' : 'w-4 h-4'} />
+            Sign Up
+            <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+          </Link>
+        </Button>
+        <Button variant="secondary" size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
+          <Link href="/login" className="group flex items-center justify-center gap-2">
+            <LogIn className={mobile ? 'w-5 h-5' : 'w-4 h-4'} />
+            Sign In
+            <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={mobile ? 'flex flex-col gap-2' : 'flex items-center gap-2'}>
+      <Button size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
+        <Link href={homeFor(role)} className="group flex items-center justify-center gap-2">
+          Open Dashboard
+          <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+        </Link>
+      </Button>
+      <Button variant="secondary" size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
+        <Link href="/report" className="group flex items-center justify-center gap-2">
+          Report an Issue
+          <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+        </Link>
+      </Button>
+    </div>
+  );
+}
 
 export function LandingNavigation() {
   const pathname = usePathname();
@@ -231,14 +295,7 @@ export function LandingNavigation() {
           </div>
 
           {/* Desktop actions */}
-          <div className="hidden lg:flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </Button>
-            <Button size="sm" asChild>
-              <Link href="/report">Report Issue</Link>
-            </Button>
-          </div>
+          <LandingNavActions />
 
           {/* Mobile toggle */}
           <button
@@ -381,12 +438,7 @@ export function LandingNavigation() {
               </Link>
 
               <div className="pt-3 border-t border-neutral-200 dark:border-dark-border flex flex-col gap-2.5">
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/dashboard">View Dashboard</Link>
-                </Button>
-                <Button className="w-full justify-start" asChild>
-                  <Link href="/report">Report Issue</Link>
-                </Button>
+                <LandingNavActions mobile />
               </div>
             </div>
           </motion.div>

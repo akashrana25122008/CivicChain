@@ -4,11 +4,16 @@ import { createNotification } from '@/lib/server/notify';
 import { ApiError } from '@/lib/server/api';
 import { reverseGeocode } from '@/lib/server/geocode';
 import { getAuthorityDepartmentForCategory } from '@/lib/issues/mapping';
+import { hashEvidenceImages, storePriorityForIssue } from '@/lib/server/intelligence/pipeline';
+import { assignIncident } from '@/lib/server/intelligence/duplicates/cluster';
+import type { DuplicateVerdict } from '@/lib/server/intelligence/duplicates/engine';
 import type { CreateReportInput } from '@/lib/validation/report';
 
 export interface CreateIssueResult {
   issueId: string;
   publicId: string;
+  /** Post-persist duplicate sweep result (null = no plausible match). */
+  duplicate: DuplicateVerdict | null;
 }
 
 /**
@@ -69,29 +74,34 @@ export async function createReport(input: {
 
   const evidenceMetadata = input.evidenceFiles;
 
-  const result = await prisma.$transaction(async (tx) => {
-    const counter = await tx.refCounter.upsert({
-      where: { id: 1 },
-      update: { value: { increment: 1 } },
-      create: { id: 1, value: 1090 },
-    });
-    const publicId = `CC-${counter.value}`;
+const result = await prisma.$transaction(async (tx) => {
+      const counter = await tx.refCounter.upsert({
+        where: { id: 1 },
+        update: { value: { increment: 1 } },
+        create: { id: 1, value: 1090 },
+      });
+      const publicId = `CC-${counter.value}`;
 
-    const issue = await tx.issue.create({
-      data: {
-        publicId,
-        title: data.title,
-        description: data.description || null,
-        category: data.category,
-        location,
-        contact: data.contact || null,
-        latitude: data.latitude ?? null,
-        longitude: data.longitude ?? null,
-        accuracy: data.accuracy ?? null,
-        reporterId,
-        authorityId,
-      },
-    });
+      const issue = await tx.issue.create({
+        data: {
+          publicId,
+          title: data.title,
+          description: data.description || null,
+          category: data.category,
+          location,
+          contact: data.contact || null,
+          latitude: data.latitude ?? null,
+          longitude: data.longitude ?? null,
+          accuracy: data.accuracy ?? null,
+          reporterId,
+          authorityId,
+        },
+      });
+
+      // Phase 3 — every report gets a real AI-analysis run record immediately.
+      await tx.aIAnalysis.create({
+        data: { issueId: issue.id, status: 'PENDING' },
+      });
 
     if (evidenceMetadata.length > 0) {
       await tx.evidence.createMany({
@@ -130,5 +140,14 @@ export async function createReport(input: {
     return { issueId: issue.id, publicId };
   });
 
-  return result;
+  // Phase 3+4 — post-persist, synchronous duplicate sweep so the citizen gets
+  // an immediate "Similar Issue Found" verdict. Evidence hashes are computed
+  // first (cheap; previously-persisted rows report 0 work) so the image
+  // similarity signal is already available to the sweep; an interim priority is
+  // stored too. The full AI run fires async after the response.
+  await hashEvidenceImages(result.issueId).catch(() => undefined);
+  const { verdict } = await assignIncident(result.issueId);
+  await storePriorityForIssue(result.issueId);
+
+  return { ...result, duplicate: verdict };
 }

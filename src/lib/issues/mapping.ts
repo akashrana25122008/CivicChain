@@ -7,9 +7,13 @@
  * (e.g. serializers) keep using the real enum values from the generated client.
  */
 import type {
+  AICategory,
+  InfrastructureType,
   IssueCategory,
   IssueStatus,
+  PriorityLevel,
   PromiseStatus,
+  SafetyRisk,
   Severity,
 } from '../../../generated/prisma/client';
 import type { Promise as CivicPromise } from '../../../generated/prisma/client';
@@ -103,3 +107,52 @@ export function getAuthorityDepartmentForCategory(
 ): string | null {
   return DEPARTMENT_BY_CATEGORY[category] ?? null;
 }
+
+// --- Phase 3+4 — AI classification + priority display vocabularies ---------
+// Keys are literals, so these stay client-bundle safe (type-only import).
+
+export const AI_CATEGORY_LABELS: Record<AICategory, string> = {
+  ROAD_DAMAGE: 'Road Damage',
+  STREET_LIGHT: 'Street Light Failure',
+  GARBAGE: 'Garbage Accumulation',
+  WATER_LEAKAGE: 'Water Leakage',
+  DRAINAGE: 'Drainage Blocked',
+  TRAFFIC_SIGNAL: 'Traffic Signal Fault',
+  PUBLIC_INFRASTRUCTURE: 'Public Infrastructure Damage',
+  OTHER: 'Other Civic Issue',
+};
+
+export const SAFETY_RISK_LABELS: Record<SafetyRisk, string> = {
+  NONE: 'None',
+  LOW: 'Low',
+  MODERATE: 'Moderate',
+  HIGH: 'High',
+  CRITICAL: 'Critical',
+};
+
+export const INFRASTRUCTURE_TYPE_LABELS: Record<InfrastructureType, string> = {
+  ROAD: 'Road',
+  SIDEWALK: 'Sidewalk',
+  BRIDGE: 'Bridge',
+  STREET_LIGHT: 'Street light',
+  TRAFFIC_SIGNAL: 'Traffic signal',
+  DRAINAGE_SYSTEM: 'Drainage system',
+  WATER_SUPPLY: 'Water supply',
+  PUBLIC_BUILDING: 'Public building',
+  PARK: 'Park',
+  NONE: 'None',
+  OTHER: 'Other',
+};
+
+export const PRIORITY_LEVEL_LABELS: Record<PriorityLevel, string> = {
+  LOW: 'Low priority',
+  MEDIUM: 'Medium priority',
+  HIGH: 'High priority',
+  CRITICAL: 'Critical priority',
+};
+
+export const DUPLICATE_BAND_LABELS = {
+  probably_new: 'Probably new',
+  possible: 'Possible duplicate',
+  strong: 'Strong duplicate candidate',
+} as const;

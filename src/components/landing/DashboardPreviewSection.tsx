@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
+import { AuthActions } from './AuthActions';
 import { DUR, EASE } from '@/lib/motion';
 
 const KPI = [
@@ -148,18 +149,7 @@ export function DashboardPreviewSection() {
           </div>
 
           <div className="mt-8 text-center">
-            <motion.div
-              whileHover={reduce ? undefined : { scale: 1.04, y: -1 }}
-              whileTap={reduce ? undefined : { scale: 0.97 }}
-              transition={{ duration: DUR.fast, ease: EASE.out }}
-            >
-              <Button size="lg" asChild>
-                <Link href="/dashboard" className="group">
-                  Explore Full Dashboard
-                  <ArrowRight className="w-5 h-5 ml-2 transition-transform duration-200 group-hover:translate-x-1" />
-                </Link>
-              </Button>
-            </motion.div>
+            <AuthActions />
           </div>
         </div>
       </div>

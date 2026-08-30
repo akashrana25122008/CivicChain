@@ -22,7 +22,7 @@ export async function GET() {
     const user = await requireUser();
     const authority = await requireOwnAuthority(user);
 
-    const [assigned, active, open, inProgress, resolved, rejected, awaitingVerification, escalationsOpen, promisesActive, promisesBroken, avgMinutes] =
+    const [assigned, active, open, inProgress, resolved, rejected, awaitingVerification, escalationsOpen, promisesActive, promisesBroken, overdue, avgMinutes] =
       await Promise.all([
         prisma.issue.count({ where: { authorityId: authority.id } }),
         prisma.issue.count({ where: { authorityId: authority.id, status: { in: ACTIVE_STATUSES } } }),
@@ -43,6 +43,14 @@ export async function GET() {
           where: { authorityId: authority.id, status: { in: ['OPEN', 'IN_PROGRESS'] } },
         }),
         prisma.promise.count({ where: { authorityId: authority.id, status: 'BROKEN' } }),
+        // Overdue: active promises whose doorstep has passed (live-sourced).
+        prisma.promise.count({
+          where: {
+            authorityId: authority.id,
+            status: { in: ['OPEN', 'IN_PROGRESS'] },
+            deadline: { lt: new Date() },
+          },
+        }),
         avgResolutionMinutes({ authorityId: authority.id }),
       ]);
 
@@ -73,6 +81,7 @@ export async function GET() {
         escalationsOpen,
         promisesActive,
         promisesBroken,
+        overdue,
         avgResolutionMinutes: avgMinutes,
       },
       activity: activity.map((log) => ({

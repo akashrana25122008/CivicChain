@@ -12,6 +12,9 @@ const NON_TERMINAL: IssueStatus[] = [
   'IN_PROGRESS',
 ];
 
+/** Awaiting action — submitted through to progress, but not resolved/rejected. */
+const PENDING: IssueStatus[] = ['SUBMITTED', 'UNDER_REVIEW', 'VERIFIED', 'ASSIGNED'];
+
 /**
  * Personal summary for the citizen dashboard. Every number is computed from
  * the live database, scoped to the signed-in user by their session id.
@@ -19,10 +22,11 @@ const NON_TERMINAL: IssueStatus[] = [
 export async function GET() {
   try {
     const user = await requireUser();
-    const [total, active, resolved, rejected, evidenceTotal, evidencePending, notificationsUnread] =
+    const [total, active, pending, resolved, rejected, evidenceTotal, evidencePending, notificationsUnread] =
       await Promise.all([
         prisma.issue.count({ where: { reporterId: user.id } }),
         prisma.issue.count({ where: { reporterId: user.id, status: { in: NON_TERMINAL } } }),
+        prisma.issue.count({ where: { reporterId: user.id, status: { in: PENDING } } }),
         prisma.issue.count({ where: { reporterId: user.id, status: 'RESOLVED' } }),
         prisma.issue.count({ where: { reporterId: user.id, status: 'REJECTED' } }),
         prisma.evidence.count({ where: { issue: { reporterId: user.id } } }),
@@ -39,6 +43,7 @@ export async function GET() {
       stats: {
         total,
         active,
+        pending,
         resolved,
         rejected,
         awaitingVerification: evidencePending,

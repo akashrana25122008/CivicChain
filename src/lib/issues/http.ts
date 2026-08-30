@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import type { File as FormFile } from 'node:buffer';
 import { requireUser } from '@/lib/server/session';
 import { handleApiError, ApiError, badRequest, notFound, forbidden } from '@/lib/server/api';
@@ -8,9 +8,8 @@ import { serializeIssueDetail } from '@/lib/issues/serialize';
 import { storeEvidenceFile, deleteEvidenceFile } from '@/lib/server/storage';
 import { assertValidEvidenceFile } from '@/lib/validation/evidence';
 import { createReportSchema } from '@/lib/validation/report';
-import { recordAudit } from '@/lib/server/audit';
-import { createNotification } from '@/lib/server/notify';
-import { STATUS_LABELS } from '@/lib/issues/mapping';
+import { transitionIssue, allowedTransitionsFor } from '@/lib/issues/transition';
+import { runReportIntelligence, ensureReportIntelligence } from '@/lib/server/intelligence/pipeline';
 import { prisma } from '@/lib/db';
 import {
   IssueStatus,
@@ -24,6 +23,11 @@ import {
  */
 
 const MAX_FILES = 10;
+
+const KNOWN_STATUSES = new Set<string>(Object.values(IssueStatus));
+function isKnownStatus(input: string): boolean {
+  return KNOWN_STATUSES.has(input);
+}
 
 async function collectEvidenceInput(form: FormData): Promise<{
   fileEntries: FormFile[];
@@ -144,8 +148,26 @@ export async function createReportHttp(request: NextRequest): Promise<NextRespon
       ipAddress: request.headers.get('x-forwarded-for'),
     });
 
+    // Real AI analysis + re-clustering run after the response is flushed;
+    // the client observes PENDING -> PROCESSING -> COMPLETED/FAILED by polling.
+    after(() => runReportIntelligence(created.issueId).catch(() => undefined));
+
+    const duplicate = created.duplicate
+      ? {
+          candidateIssueId: created.duplicate.candidateIssueId,
+          candidatePublicId: created.duplicate.candidatePublicId,
+          confidence: Number(created.duplicate.confidence.toFixed(3)),
+          band: created.duplicate.band,
+          distanceMeters: created.duplicate.distanceMeters,
+        }
+      : null;
+
     return NextResponse.json(
-      { issue: { id: created.issueId, publicId: created.publicId } },
+      {
+        issue: { id: created.issueId, publicId: created.publicId },
+        analysisStatus: 'PENDING',
+        duplicate,
+      },
       { status: 201 },
     );
   } catch (error) {
@@ -183,6 +205,7 @@ export async function listReportsHttp(request: NextRequest): Promise<NextRespons
 
     const result = await queryIssueList({
       viewerId: viewer.id,
+      revealReporter: viewer.role === 'AUTHORITY' || viewer.role === 'ADMIN',
       reporterId,
       authorityId,
       q: searchParams.get('q'),
@@ -227,6 +250,12 @@ const ISSUE_INCLUDE = {
     },
   },
   auditLogs: { orderBy: { createdAt: 'asc' as const } },
+  aiAnalysis: true,
+  incident: {
+    include: {
+      issues: { select: { id: true, publicId: true, status: true } },
+    },
+  },
 } as const;
 
 /** GET /api/reports/[id] — ownership/RBAC-enforced detail. */
@@ -237,6 +266,9 @@ export async function getReportDetailHttp(request: NextRequest, id: string): Pro
     if (!issue) throw notFound('Report');
     await authorizeReportDetail(viewer, issue);
 
+    // Resume-on-read: a PENDING/abandoned PROCESSING analysis self-heals.
+    after(() => ensureReportIntelligence(id).catch(() => undefined));
+
     return NextResponse.json({
       issue: serializeIssueDetail({
         issue,
@@ -245,6 +277,8 @@ export async function getReportDetailHttp(request: NextRequest, id: string): Pro
         evidence: issue.evidence,
         auditLogs: issue.auditLogs,
         viewerId: viewer.id,
+        revealContact: viewer.role === 'ADMIN' || viewer.role === 'AUTHORITY',
+        allowedTransitions: await allowedTransitionsFor(viewer, issue),
       }),
     });
   } catch (error) {
@@ -252,76 +286,46 @@ export async function getReportDetailHttp(request: NextRequest, id: string): Pro
   }
 }
 
-const VALID_STATUSES = new Set<string>(Object.values(IssueStatus));
-
-function parseStatus(input: string): IssueStatus {
-  if (!VALID_STATUSES.has(input)) {
-    throw new ApiError(400, 'INVALID_INPUT', `Unknown status "${input}".`);
-  }
-  return input as IssueStatus;
-}
-
-/** PATCH /api/reports/[id] — status updates under the Phase 1 role model. */
+/**
+ * PATCH /api/reports/[id] (and /api/issues/[id]).
+ *
+ * Handles non-lifecycle metadata and, via the single transition authority,
+ * validated lifecycle moves. Crucially, PATCH cannot set status to ANY value:
+ * the requested status is validated against the transition graph by
+ * `transitionIssue()` (the one place that mutates Issue.status), so arbitrary
+ * jumps like PATCH {status:"RESOLVED"} from SUBMITTED are rejected. Callers
+ * wanting the explicit workflow should prefer the domain-action endpoints
+ * (/resolve, /reopen, /verify, /escalate, /analyze).
+ */
 export async function patchReportHttp(request: NextRequest, id: string): Promise<NextResponse> {
   try {
     const actor = await requireUser();
 
-    let body: { status?: unknown };
+    let body: Record<string, unknown>;
     try {
       body = await request.json();
     } catch {
       throw new ApiError(400, 'INVALID_INPUT', 'Request body must be JSON.');
     }
-    if (typeof body.status !== 'string') {
-      throw new ApiError(400, 'INVALID_INPUT', 'Status change requires a "status" field.');
-    }
-    const next = parseStatus(body.status);
 
-    const issue = await prisma.issue.findUnique({ where: { id } });
-    if (!issue) throw notFound('Report');
-
-    // PATCH status is a staff action — citizens may only ever READ their own
-    // reports; they can never change lifecycle status on the server.
-    if (actor.role === 'ADMIN') {
-      // allowed
-    } else if (actor.role === 'AUTHORITY') {
-      const ownAuthority = await prisma.authority.findFirst({
-        where: { userId: actor.id },
-        select: { id: true },
+    // Metadata updates are not yet editable via this surface. Status moves are
+    // allowed ONLY when valid in the state graph, via the transition authority.
+    if ('status' in body && body.status !== undefined) {
+      if (typeof body.status !== 'string' || !isKnownStatus(body.status)) {
+        throw new ApiError(400, 'INVALID_INPUT', 'A valid "status" value is required.');
+      }
+      const { unchanged } = await transitionIssue({
+        issueId: id,
+        actor,
+        nextStatus: body.status as IssueStatus,
       });
-      if (!ownAuthority || ownAuthority.id !== issue.authorityId) throw forbidden();
-    } else {
-      throw forbidden();
+      if (unchanged) {
+        return NextResponse.json({ unchanged: true });
+      }
     }
 
-    if (next === issue.status) {
-      return NextResponse.json({ unchanged: true });
-    }
-
-    const updated = await prisma.issue.update({
-      where: { id },
-      data: { status: next },
-      include: ISSUE_INCLUDE,
-    });
-
-    await recordAudit({
-      actorId: actor.id,
-      issueId: issue.id,
-      action: 'STATUS_CHANGED',
-      entityType: 'Issue',
-      entityId: issue.id,
-      metadata: { from: issue.status, to: next },
-    });
-
-    if (issue.reporterId !== actor.id) {
-      await createNotification({
-        userId: issue.reporterId,
-        issueId: issue.id,
-        type: 'STATUS_CHANGED',
-        title: `Report ${issue.publicId} is now ${STATUS_LABELS[next] ?? next}`,
-        message: `Status changed from ${STATUS_LABELS[issue.status] ?? issue.status} to ${STATUS_LABELS[next] ?? next}.`,
-      });
-    }
+    const updated = await prisma.issue.findUnique({ where: { id }, include: ISSUE_INCLUDE });
+    if (!updated) throw notFound('Report');
 
     return NextResponse.json({
       issue: serializeIssueDetail({
@@ -331,6 +335,8 @@ export async function patchReportHttp(request: NextRequest, id: string): Promise
         evidence: updated.evidence,
         auditLogs: updated.auditLogs,
         viewerId: actor.id,
+        revealContact: actor.role === 'ADMIN' || actor.role === 'AUTHORITY',
+        allowedTransitions: await allowedTransitionsFor(actor, updated),
       }),
     });
   } catch (error) {

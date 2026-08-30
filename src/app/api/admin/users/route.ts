@@ -3,7 +3,7 @@ import { handleApiError } from '@/lib/server/api';
 import { requireRole } from '@/lib/server/session';
 import { formatRelativeTime } from '@/lib/utils';
 import { prisma } from '@/lib/db';
-import { UserRole } from '../../../../../generated/prisma/client';
+import { UserRole, RoleApprovalStatus } from '../../../../../generated/prisma/client';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   CITIZEN: 'Citizen',
@@ -26,9 +26,13 @@ export async function GET(request: NextRequest) {
     const requestedSize = Number(sp.get('pageSize')) || 20;
     const pageSize = Math.min(100, Math.max(1, requestedSize));
 
+    // When `pending=true`, return only accounts awaiting role approval.
+    const pendingOnly = sp.get('pending') === 'true';
+
     const where = {
       AND: [
         role ? { role } : {},
+        pendingOnly ? { roleStatus: RoleApprovalStatus.PENDING } : {},
         term
           ? {
               OR: [
@@ -46,7 +50,11 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        select: { id: true, name: true, email: true, role: true, karmaScore: true, createdAt: true },
+        select: {
+          id: true, name: true, email: true, role: true, requestedRole: true, roleStatus: true,
+          authorities: { select: { id: true, name: true, department: true } },
+          karmaScore: true, createdAt: true,
+        },
       }),
       prisma.user.count({ where }),
     ]);
@@ -70,6 +78,9 @@ export async function GET(request: NextRequest) {
         email: u.email,
         role: u.role,
         roleLabel: ROLE_LABELS[u.role] ?? u.role,
+        requestedRole: u.requestedRole,
+        roleStatus: u.roleStatus,
+        authority: u.authorities[0] ? { id: u.authorities[0].id, name: u.authorities[0].name, department: u.authorities[0].department } : null,
         karmaScore: u.karmaScore,
         createdAt: u.createdAt.toISOString(),
         timeLabel: formatRelativeTime(u.createdAt),
@@ -80,7 +91,132 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       pageCount: Math.ceil(total / pageSize),
+      departments: await prisma.authority.findMany({
+        select: { id: true, name: true, department: true },
+        orderBy: { name: 'asc' },
+      }),
     });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+interface ReviewBody {
+  id?: string;
+  action?: 'approve' | 'reject';
+  // For AUTHORITY approval: link to an existing department, or create a new one.
+  authorityId?: string;
+  departmentName?: string;
+  departmentEmail?: string;
+}
+
+/** ADMIN-only review of pending role requests (approve / reject). */
+export async function PATCH(request: Request) {
+  try {
+    const admin = await requireRole('ADMIN');
+    const body = (await request.json().catch(() => ({}))) as ReviewBody;
+
+    const id = body.id;
+    if (!id || (body.action !== 'approve' && body.action !== 'reject')) {
+      return NextResponse.json(
+        { error: { code: 'INVALID_INPUT', message: 'A valid id and action (approve|reject) are required.' } },
+        { status: 400 },
+      );
+    }
+
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      return NextResponse.json(
+        { error: { code: 'NOT_FOUND', message: 'User not found.' } },
+        { status: 404 },
+      );
+    }
+
+    if (body.action === 'reject') {
+      const updated = await prisma.user.update({
+        where: { id },
+        data: {
+          roleStatus: RoleApprovalStatus.REJECTED,
+          requestedRole: null,
+          roleReviewedById: admin.id,
+          roleReviewedAt: new Date(),
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          action: 'ROLE_REQUEST_REJECTED',
+          actorId: admin.id,
+          entityType: 'User',
+          entityId: target.id,
+          metadata: { email: target.email, requestedRole: target.requestedRole ?? null },
+        },
+      });
+      return NextResponse.json({ ok: true, user: { id: updated.id, role: updated.role, roleStatus: updated.roleStatus } });
+    }
+
+    // approve
+    const requested = target.requestedRole;
+    if (!requested || requested === UserRole.CITIZEN) {
+      return NextResponse.json(
+        { error: { code: 'NOT_PENDING', message: 'This account has no pending privileged role request.' } },
+        { status: 400 },
+      );
+    }
+
+    if (requested === UserRole.AUTHORITY) {
+      // Link to an existing department (recommended) or create a new one.
+      if (body.authorityId) {
+        const authority = await prisma.authority.findUnique({ where: { id: body.authorityId } });
+        if (!authority) {
+          return NextResponse.json(
+            { error: { code: 'NOT_FOUND', message: 'Selected department not found.' } },
+            { status: 404 },
+          );
+        }
+        await prisma.authority.update({
+          where: { id: authority.id },
+          data: { userId: target.id, email: body.departmentEmail ?? target.email },
+        });
+      } else {
+        const deptName = body.departmentName?.trim();
+        if (!deptName) {
+          return NextResponse.json(
+            { error: { code: 'INVALID_INPUT', message: 'Provide an existing department or a department name to create one.' } },
+            { status: 400 },
+          );
+        }
+        await prisma.authority.create({
+          data: {
+            name: deptName,
+            department: deptName,
+            email: body.departmentEmail ?? target.email,
+            userId: target.id,
+          },
+        });
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: {
+        role: requested,
+        roleStatus: RoleApprovalStatus.APPROVED,
+        roleReviewedById: admin.id,
+        roleReviewedAt: new Date(),
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        action: 'ROLE_REQUEST_APPROVED',
+        actorId: admin.id,
+        entityType: 'User',
+        entityId: target.id,
+        metadata: { email: target.email, grantedRole: requested },
+      },
+    });
+
+    return NextResponse.json({ ok: true, user: { id: updated.id, role: updated.role, roleStatus: updated.roleStatus } });
   } catch (error) {
     return handleApiError(error);
   }
