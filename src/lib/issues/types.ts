@@ -139,6 +139,13 @@ export type DuplicateVerdictItem = {
   signals: DuplicateSignalsItem;
 } | null;
 
+export type SlaSnapshotItem = {
+  slaState: 'ON_TRACK' | 'AT_RISK' | 'BREACHED' | 'RESOLVED';
+  slaPctElapsed: number;
+  timeRemainingMs: number;
+  deadline: string | null;
+} | null;
+
 export interface IssueDetail extends IssueListItem {
   description: string | null;
   latitude: number | null;
@@ -154,6 +161,11 @@ export interface IssueDetail extends IssueListItem {
   priorityBreakdown: PriorityBreakdown;
   /** Lifecycle statuses the current viewer is authorized to request next. */
   allowedTransitions: string[];
+  /**
+   * Real, computed Promise/SLA standing (Phase 6). Separate from the persisted
+   * PromiseStatus and Issue lifecycle. Null when no Promise (no authority yet).
+   */
+  sla: SlaSnapshotItem;
 }
 
 export interface ApiIssueResponse {

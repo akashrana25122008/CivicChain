@@ -14,6 +14,7 @@ import { intelligenceConfig } from '@/lib/server/intelligence/config';
 import { chatCompletionWithRetry } from '@/lib/server/intelligence/ai/client';
 import { AI_CATEGORY_TO_ISSUE, aiSeverityToIssueSeverity } from '@/lib/server/intelligence/ai/mapping';
 import { getAuthorityDepartmentForCategory } from '@/lib/issues/mapping';
+import { ensurePromiseForIssue, reconcilePromiseStatus } from '@/lib/sla/promise';
 import { z } from 'zod';
 import {
   AIAnalysisStatus,
@@ -216,6 +217,10 @@ const completedAt = new Date();
         },
       });
     });
+    // Once AI routes the issue to an authority, form the resolution Promise
+    // (deterministic deadline from SLA policy) and reconcile its status.
+    await ensurePromiseForIssue(issueId).catch(() => undefined);
+    await reconcilePromiseStatus(issueId).catch(() => undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await failAnalysis(issueId, message, 'error');

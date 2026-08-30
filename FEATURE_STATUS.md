@@ -127,8 +127,18 @@ provisioned test database — they are not fabricated.
   classification + confidence + explanation (`intelligence/ai`), duplicate +
   incident clustering (`intelligence/duplicates`), and an explainable priority
   engine (`intelligence/priority`). Orchestrated by
-  `runReportIntelligence()` and exposed via `POST /api/issues/[id]/analyze`.
-  No fake scores — unavailable inputs are flagged, not invented.
+   `runReportIntelligence()` and exposed via `POST /api/issues/[id]/analyze`.
+   No fake scores — unavailable inputs are flagged, not invented.
+- **Phase 6 — Promise/SLA engine (real deadlines + state, minus the scheduler)**
+  (`src/lib/sla/`). Centralized policy (`policy.ts`) maps severity → real
+  acknowledgement/resolution windows (env-overridable). Deterministic state
+  calculator (`state.ts`) yields `ON_TRACK / AT_RISK / BREACHED / RESOLVED` —
+  separate from Issue lifecycle. Idempotent Promise formation + reconciliation
+  (`promise.ts`) is wired into issue creation, AI authority routing, resolution
+  (→COMPLETED), and reopen; `Promise` rows persist real deadlines and the
+  department summary exposes live SLA health (onTrack/atRisk/breached). Only the
+  periodic SLA scheduler/worker needs Redis (Phase 5).
+
 - **Phase 7 — Automated escalation engine** (`src/lib/escalation/`).
   - Canonical 4-level ladder (`levels.ts`, shared constant, not scattered strings).
   - Configurable, DB-backed `EscalationRule` model with a condition bag
@@ -157,10 +167,18 @@ provisioned test database — they are not fabricated.
   explicitly NOT the production primary. AI/Duplicate/Priority/Notification/SLA/
   Verification/Analytics workers, retry policy, dead-letter queue all require
   Redis — documented, not fabricated.
-- **Phase 6 — SLA worker + Promise/SLA deadline engine.** The `Promise` model
-  exists (single `deadline`), and the escalation engine's SLA-elapsed
-  condition works, but the periodic SLA worker and ON_TRACK/AT_RISK/BREACHED
-  state engine need a scheduler (Redis).
+- **Phase 6 — SLA/Promise engine (COMPUTED, missing only the scheduler).**
+  The SLA engine itself is now real: `src/lib/sla/` provides a centralized
+  policy (`policy.ts`), a deterministic state calculator producing
+  `ON_TRACK / AT_RISK / BREACHED / RESOLVED` (`state.ts`), and an idempotent
+  Promise formation + lifecycle reconciliation service (`promise.ts`) wired
+  into issue creation, AI authority-routing, resolution, and reopen.
+  `Promise` rows are created with real deadlines from SLA policy; persisted
+  `PromiseStatus` is kept in step (OPEN→IN_PROGRESS/COMPLETED/BROKEN); real
+  SLA health (onTrack/atRisk/breached) is exposed on the department summary.
+  What remains BLOCKED is the **periodic SLA worker** (a Redis/scheduler that
+  scans active promises on a schedule and re-evaluates escalation) — the
+  computation is real, the trigger needs the Phase 5 queue.
 - **Phase 8 — Computer vision verification.** No CV provider/model is
   configured. No `CVVerification` model or fabricated confidence is emitted;
   documented as an infrastructure/provider requirement.

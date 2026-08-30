@@ -6,6 +6,7 @@ import { reverseGeocode } from '@/lib/server/geocode';
 import { getAuthorityDepartmentForCategory } from '@/lib/issues/mapping';
 import { hashEvidenceImages, storePriorityForIssue } from '@/lib/server/intelligence/pipeline';
 import { assignIncident } from '@/lib/server/intelligence/duplicates/cluster';
+import { ensurePromiseForIssue } from '@/lib/sla/promise';
 import type { DuplicateVerdict } from '@/lib/server/intelligence/duplicates/engine';
 import type { CreateReportInput } from '@/lib/validation/report';
 
@@ -148,6 +149,9 @@ const result = await prisma.$transaction(async (tx) => {
   await hashEvidenceImages(result.issueId).catch(() => undefined);
   const { verdict } = await assignIncident(result.issueId);
   await storePriorityForIssue(result.issueId);
+
+  // Phase 6 — if the issue already has a routed authority, form its Promise.
+  await ensurePromiseForIssue(result.issueId).catch(() => undefined);
 
   return { ...result, duplicate: verdict };
 }

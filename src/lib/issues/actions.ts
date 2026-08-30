@@ -5,6 +5,7 @@ import { ApiError, badRequest, forbidden, notFound } from '@/lib/server/api';
 import { transitionIssue } from '@/lib/issues/transition';
 import { getOwnAuthority } from '@/lib/server/dept';
 import { evaluateEscalations } from '@/lib/escalation/engine';
+import { syncPromiseForIssue, reconcilePromiseStatus } from '@/lib/sla/promise';
 import {
   IssueStatus,
   type Prisma,
@@ -80,6 +81,9 @@ export async function resolveIssue(input: {
     });
   }
 
+  // Mark the resolution Promise honoured (status -> COMPLETED).
+  await reconcilePromiseStatus(issueId).catch(() => undefined);
+
   return { changed: true, issueId };
 }
 
@@ -116,6 +120,8 @@ export async function reopenIssue(input: {
   }
 
   await transitionIssue({ issueId, actor, nextStatus: target, note });
+  // Reopening restarts the promise clock: ensure one exists + reconcile.
+  await syncPromiseForIssue(issueId).catch(() => undefined);
   return { changed: true, issueId };
 }
 

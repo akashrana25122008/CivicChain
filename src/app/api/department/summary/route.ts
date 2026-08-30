@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/session';
 import { handleApiError } from '@/lib/server/api';
 import { requireOwnAuthority } from '@/lib/server/dept';
-import { avgResolutionMinutes } from '@/lib/server/metrics';
+import { avgResolutionMinutes, slaHealthForAuthority } from '@/lib/server/metrics';
 import { formatRelativeTime } from '@/lib/utils';
 import { prisma } from '@/lib/db';
 import { IssueStatus } from '../../../../../generated/prisma/client';
@@ -22,7 +22,7 @@ export async function GET() {
     const user = await requireUser();
     const authority = await requireOwnAuthority(user);
 
-    const [assigned, active, open, inProgress, resolved, rejected, awaitingVerification, escalationsOpen, promisesActive, promisesBroken, overdue, avgMinutes] =
+    const [assigned, active, open, inProgress, resolved, rejected, awaitingVerification, escalationsOpen, promisesActive, promisesBroken, overdue, avgMinutes, slaHealth] =
       await Promise.all([
         prisma.issue.count({ where: { authorityId: authority.id } }),
         prisma.issue.count({ where: { authorityId: authority.id, status: { in: ACTIVE_STATUSES } } }),
@@ -52,6 +52,7 @@ export async function GET() {
           },
         }),
         avgResolutionMinutes({ authorityId: authority.id }),
+        slaHealthForAuthority({ authorityId: authority.id }),
       ]);
 
     const activity = await prisma.auditLog.findMany({
@@ -83,6 +84,9 @@ export async function GET() {
         promisesBroken,
         overdue,
         avgResolutionMinutes: avgMinutes,
+        slaOnTrack: slaHealth.onTrack,
+        slaAtRisk: slaHealth.atRisk,
+        slaBreached: slaHealth.breached,
       },
       activity: activity.map((log) => ({
         id: log.id,

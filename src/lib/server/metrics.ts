@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '../../../generated/prisma/client';
+import { calculateSlaState } from '@/lib/sla/state';
 
 export interface ResolutionQuery {
   authorityId?: string | null;
@@ -57,4 +58,39 @@ export async function createdIssuesByDay(options: {
     out.push({ day: key, created: counts.get(key) ?? 0 });
   }
   return out;
+}
+/**
+ * Real SLA health distribution (ON_TRACK / AT_RISK / BREACHED) for an
+ * authority's active promises (Phase 6). States are computed via the shared
+ * SLA evaluator, never fabricated. RESOLVED/COMPLETED promises are excluded
+ * from the distribution (they are no longer owed).
+ */
+export async function slaHealthForAuthority(options: {
+  authorityId: string;
+}): Promise<{ onTrack: number; atRisk: number; breached: number }> {
+  const promises = await prisma.promise.findMany({
+    where: {
+      authorityId: options.authorityId,
+      status: { in: ['OPEN', 'IN_PROGRESS'] },
+    },
+    select: {
+      deadline: true,
+      issue: { select: { createdAt: true, status: true } },
+    },
+  });
+
+  const counts = { onTrack: 0, atRisk: 0, breached: 0 };
+  for (const p of promises) {
+    if (!p.issue) continue;
+    const { slaState } = calculateSlaState({
+      deadline: p.deadline,
+      createdAt: p.issue.createdAt,
+      resolved: p.issue.status === 'RESOLVED' || p.issue.status === 'REJECTED',
+    });
+    if (slaState === 'ON_TRACK') counts.onTrack += 1;
+    else if (slaState === 'AT_RISK') counts.atRisk += 1;
+    else if (slaState === 'BREACHED') counts.breached += 1;
+    // RESOLVED is excluded (not an active promise).
+  }
+  return counts;
 }

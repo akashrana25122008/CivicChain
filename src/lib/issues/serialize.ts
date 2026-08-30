@@ -28,9 +28,11 @@ import type {
   IssueDetail,
   IssueListItem,
   PriorityBreakdown,
+  SlaSnapshotItem,
   TimelineItem,
 } from './types';
 import { computePriorityScore, evidenceConfidenceScore } from '@/lib/server/intelligence/priority/engine';
+import { calculateSlaState } from '@/lib/sla/state';
 
 /** Evidence row optionally loaded with its full verification history. */
 type EvidenceWithVerifications = Evidence & {
@@ -215,6 +217,31 @@ export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
     incident: issue.incident ? toIncidentSummary(issue.incident) : null,
     priorityBreakdown: toPriorityBreakdown(issue, evidence),
     allowedTransitions: input.allowedTransitions ?? [],
+    sla: toSlaSnapshot(issue, input.promise),
+  };
+}
+
+/**
+ * Real Promise/SLA standing (Phase 6). Computed deterministically from the
+ * committed deadline vs the issue's creation time and the issue's lifecycle.
+ */
+function toSlaSnapshot(
+  issue: Pick<Issue, 'id' | 'status' | 'createdAt'>,
+  promise: CivicPromise | null | undefined,
+): SlaSnapshotItem {
+  if (!promise || !promise.deadline) return null;
+  const resolved =
+    issue.status === 'RESOLVED' || issue.status === 'REJECTED' || promise.status === 'COMPLETED';
+  const snap = calculateSlaState({
+    deadline: promise.deadline,
+    createdAt: issue.createdAt,
+    resolved,
+  });
+  return {
+    slaState: snap.slaState,
+    slaPctElapsed: snap.slaPctElapsed,
+    timeRemainingMs: snap.timeRemainingMs,
+    deadline: promise.deadline.toISOString(),
   };
 }
 
