@@ -14,15 +14,34 @@ import { securityHeadersMiddleware, mapSecurityHeadersMiddleware } from '@/lib/s
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Apply rate limiting to auth endpoints
+  // Apply rate limiting to auth endpoints. Every /api/auth/* call is counted
+  // against the auth bucket (and ONLY that bucket) — the dev magic-link preview
+  // (a "read my token" helper gated by AUTH_DEV_EMAIL_PREVIEW, not a login
+  // attempt) is bucketed separately so interactive sign-in is not throttled by
+  // repeated link previews. All /api/auth/* routes short-circuit here so they
+  // are never ALSO double-counted by the generic /api/ limiter below.
   if (pathname.startsWith('/api/auth/')) {
-    const { allowed, response, headers } = await applyRateLimit(request, rateLimiters.auth);
-    if (!allowed && response) {
-      return applySecurityHeaders(response, pathname);
+    if (pathname === '/api/auth/dev/magic-link') {
+      const { allowed, response } = await applyRateLimit(request, rateLimiters.api);
+      if (!allowed && response) {
+        return applySecurityHeaders(response, pathname);
+      }
+      if (response) {
+        return applySecurityHeaders(response, pathname);
+      }
+    } else {
+      const { allowed, response } = await applyRateLimit(request, rateLimiters.auth);
+      if (!allowed && response) {
+        return applySecurityHeaders(response, pathname);
+      }
+      if (response) {
+        return applySecurityHeaders(response, pathname);
+      }
     }
-    if (response) {
-      return applySecurityHeaders(response, pathname);
-    }
+    // Auth requests are only rate-limited by their own bucket — do not
+    // also count them against the generic /api/ bucket below.
+    const authResponse = NextResponse.next();
+    return applySecurityHeaders(authResponse, pathname);
   }
 
   // Apply rate limiting to report creation endpoints
