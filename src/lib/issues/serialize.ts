@@ -70,6 +70,7 @@ export function serializeIssueListRow(input: IssueRowInput): IssueListItem {
     hasLocation: issue.latitude !== null && issue.longitude !== null,
     latitude: issue.latitude,
     longitude: issue.longitude,
+    accuracy: issue.accuracy,
     reporterName: reporter?.name ?? reporter?.email ?? null,
   };
 }
@@ -113,10 +114,13 @@ function latestVerification(ev: EvidenceWithVerifications): EvidenceVerification
 }
 
 function toEvidenceItem(ev: EvidenceWithVerifications): EvidenceItem {
+  const isUploaded = ev.type !== 'URL';
   return {
     id: ev.id,
     type: ev.type,
-    url: ev.url,
+    // Uploaded files are private; the accessing route re-checks authorization.
+    url: isUploaded ? `/api/evidence/${ev.id}/file` : ev.url,
+    storageKey: isUploaded ? ev.url : null,
     fileName: ev.fileName,
     mimeType: ev.mimeType,
     sizeBytes: ev.sizeBytes,

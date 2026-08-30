@@ -223,6 +223,7 @@ model Issue {
   priority    Int? // 0-100; null until a real scoring pipeline exists
   latitude    Float? // stored for PostGIS
   longitude   Float? // stored for PostGIS
+  accuracy    Float? // GPS accuracy in metres; null when not captured
   location    String? // free-text address / landmark / ward
   contact     String? // reporter follow-up contact (confidential)
   reporterId  String

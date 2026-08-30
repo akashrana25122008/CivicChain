@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { Navigation } from '@/components/layout/Navigation';
 import { Button } from '@/components/ui/Button';
@@ -17,10 +17,14 @@ import {
   Loader2,
   X,
   Link2,
+  LocateFixed,
+  Crosshair,
   Brain,
 } from 'lucide-react';
 
 type Step = 'form' | 'submitting' | 'result';
+
+type GpsState = { phase: 'idle' | 'locating' | 'done' | 'error'; error?: string };
 
 export default function ReportPage() {
   const [step, setStep] = useState<Step>('form');
@@ -30,6 +34,7 @@ export default function ReportPage() {
     location: '',
     latitude: '',
     longitude: '',
+    accuracy: '',
     description: '',
     contact: '',
     evidenceUrl: '',
@@ -37,12 +42,46 @@ export default function ReportPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [issue, setIssue] = useState<IssueDetail | null>(null);
+  const [gps, setGps] = useState<GpsState>({ phase: 'idle' });
+  // Synchronous double-submit guard: the windowed server check is the source
+  // of truth, but we must never issue two identical requests from one click.
+  const submittingRef = useRef(false);
 
   const resetForm = () => {
-    setFormData({ title: '', category: '', location: '', latitude: '', longitude: '', description: '', contact: '', evidenceUrl: '' });
+    setFormData({ title: '', category: '', location: '', latitude: '', longitude: '', accuracy: '', description: '', contact: '', evidenceUrl: '' });
     setFiles([]);
     setError(null);
     setIssue(null);
+    setGps({ phase: 'idle' });
+  };
+
+  const handleUseMyLocation = () => {
+    if (!('geolocation' in navigator)) {
+      setGps({ phase: 'error', error: 'Geolocation is not available in this browser.' });
+      return;
+    }
+    setGps({ phase: 'locating' });
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFormData((prev) => ({
+          ...prev,
+          latitude: String(position.coords.latitude),
+          longitude: String(position.coords.longitude),
+          accuracy: String(Math.round(position.coords.accuracy)),
+        }));
+        setGps({ phase: 'done' });
+      },
+      (err) => {
+        setGps({
+          phase: 'error',
+          error:
+            err.code === err.PERMISSION_DENIED
+              ? 'Location permission was denied — you can still enter coordinates or an address manually.'
+              : 'Could not read your location. Please enter coordinates manually.',
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
   };
 
   const handleFiles = (list: FileList | null) => {
@@ -53,6 +92,8 @@ export default function ReportPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError(null);
     setStep('submitting');
 
@@ -62,13 +103,14 @@ export default function ReportPage() {
     if (formData.location.trim()) body.set('location', formData.location.trim());
     if (formData.latitude.trim()) body.set('latitude', formData.latitude.trim());
     if (formData.longitude.trim()) body.set('longitude', formData.longitude.trim());
+    if (formData.accuracy.trim()) body.set('accuracy', formData.accuracy.trim());
     if (formData.description.trim()) body.set('description', formData.description.trim());
     if (formData.contact.trim()) body.set('contact', formData.contact.trim());
     if (formData.evidenceUrl.trim()) body.append('evidenceUrl', formData.evidenceUrl.trim());
     files.forEach((file) => body.append('file', file));
 
     try {
-      const res = await fetch('/api/issues', { method: 'POST', body });
+      const res = await fetch('/api/reports', { method: 'POST', body });
       const data = (await res.json()) as
         | { issue: { id: string; publicId: string } }
         | { error?: { message: string } };
@@ -79,7 +121,7 @@ export default function ReportPage() {
       }
 
       // Persistence check: re-fetch the created report from the database.
-      const detailRes = await fetch(`/api/issues/${(data as { issue: { id: string } }).issue.id}`);
+      const detailRes = await fetch(`/api/reports/${(data as { issue: { id: string } }).issue.id}`);
       if (detailRes.ok) {
         const detail = (await detailRes.json()) as { issue: IssueDetail };
         setIssue(detail.issue);
@@ -89,6 +131,7 @@ export default function ReportPage() {
 
       setStep('result');
     } catch (err) {
+      submittingRef.current = false;
       setError(err instanceof Error ? err.message : 'Something went wrong while submitting your report.');
       setStep('form');
     }
@@ -144,23 +187,56 @@ export default function ReportPage() {
                     onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                   />
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <Input
-                      label="Latitude (optional)"
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 21.1702"
-                      value={formData.latitude}
-                      onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                    />
-                    <Input
-                      label="Longitude (optional)"
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 72.8311"
-                      value={formData.longitude}
-                      onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                    />
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Location Coordinates
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleUseMyLocation}
+                        disabled={gps.phase === 'locating'}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 disabled:opacity-60"
+                      >
+                        {gps.phase === 'locating' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <LocateFixed className="w-3.5 h-3.5" />
+                        )}
+                        {gps.phase === 'locating' ? 'Reading your location…' : 'Use My Location'}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Input
+                        label="Latitude (optional)"
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 21.1702"
+                        value={formData.latitude}
+                        onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                      />
+                      <Input
+                        label="Longitude (optional)"
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 72.8311"
+                        value={formData.longitude}
+                        onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                      />
+                    </div>
+                    {gps.phase === 'done' && (
+                      <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                        <Crosshair className="w-3.5 h-3.5" />
+                        Location captured by GPS
+                        {formData.accuracy ? ` ±${formData.accuracy} m` : ''}
+                      </p>
+                    )}
+                    {gps.phase === 'error' && (
+                      <p className="mt-2 text-xs text-neutral-500">{gps.error}</p>
+                    )}
+                    <p className="mt-1 text-xs text-neutral-500">
+                      For report accuracy the device&apos;s GPS fix (lat, lng, and ± meters error) is stored with the report when captured.
+                    </p>
                   </div>
 
                   <div>
@@ -318,9 +394,25 @@ export default function ReportPage() {
                   <div className="mt-4 p-4 rounded-xl border border-neutral-200 bg-white dark:bg-dark-bg-card dark:border-dark-border flex items-start gap-3">
                     <Brain className="w-5 h-5 text-neutral-400 mt-0.5 flex-shrink-0" />
                     <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      AI-assisted analysis — severity, priority scoring, duplicate detection and verification — is part of <strong>Phase 2</strong> and was deliberately not simulated.
+                      Report creation, evidence validation and the accountability workflow are live. Server-side AI analysis — severity, cross-report duplicate detection and verification — is planned for a later phase and was deliberately not simulated.
                     </p>
                   </div>
+                  {issue.hasLocation && (
+                    <div className="mt-4 p-4 rounded-xl border border-neutral-200 bg-white dark:bg-dark-bg-card dark:border-dark-border flex items-start gap-3">
+                      <MapPin className="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                        <p className="text-neutral-900 dark:text-white font-medium mb-1">Location recorded with GPS</p>
+                        <p className="font-mono text-xs">{Number(issue.latitude).toFixed(6)}, {Number(issue.longitude).toFixed(6)}</p>
+                        <p className="text-xs mt-1">
+                          Accuracy{' '}
+                          {issue.accuracy != null
+                            ? `± ${Math.round(issue.accuracy)} meters`
+                            : 'not provided'}
+                          {issue.location ? ` • ${issue.location}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

@@ -42,6 +42,15 @@ export function handleApiError(error: unknown): NextResponse {
       { status: 400 },
     );
   }
+  // User input validation uses TypeError with user-safe messages (e.g. magic
+  // byte / MIME / extension checks). Treat as 400, never 500.
+  if (error instanceof TypeError) {
+    console.error('[api] validation error:', error.message);
+    return NextResponse.json(
+      { error: { code: 'INVALID_INPUT', message: error.message } },
+      { status: 400 },
+    );
+  }
   console.error('[api] unexpected error:', error);
   return NextResponse.json(
     { error: { code: 'INTERNAL', message: 'Something went wrong on the server.' } },

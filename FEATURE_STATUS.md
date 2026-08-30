@@ -17,7 +17,42 @@ Phase 0 freeze & audit. Generated from direct source inspection
 
 | WORKING | PARTIAL | MOCK | MISSING | UNKNOWN |
 | ------: | ------: | ---: | ------: | ------: |
-|      18 |      10 |   12 |       7 |       0 |
+|      18 |      11 |   11 |       7 |       0 |
+
+## Phase 2 Update (this revision — Real Report → Database Pipeline)
+
+The report pipeline is now fully real: multipart intake → server-side validation
+(magic bytes, MIME ↔ extension ↔ content, size) → private storage (local disk or
+S3-compatible object storage) → PostgreSQL issue + accuracy + evidence → audit +
+notification. Status overrides applied on top of the Phase 1 table:
+
+- **Report submission persistence** — WORKING (Phase 1) → **WORKING** (now under
+  `POST /api/reports` + `POST /api/issues`, shared handler `src/lib/issues/http.ts`;
+  GPS accuracy persisted to `Issue.accuracy`).
+- **Image / video upload & storage** — WORKING → **WORKING** (every upload is
+  magic-byte + structure validated server-side; stored privately; S3-compatible
+  backend when `STORAGE_*` are set; files served only via the authorized
+  `GET /api/evidence/[id]/file` route — no public path).
+- **Geocoding / coordinate capture** — PARTIAL → **PARTIAL** (browser GPS taps a
+  real `navigator.geolocation` fix + ±m accuracy, stored with the report; optional
+  server-side reverse geocoder via `GEOCODER_URL` used only for the location label
+  and never needed for submission; address search still not built).
+- **Duplicate detection / report merging** — MOCK → **PARTIAL** (live: same
+  reporter + category + title within 60 s returns `409 DUPLICATE_REPORT`, plus a
+  synchronous client lock. Cross-report similarity clustering remains MOCK).
+- **Evidence privacy / access control** — MISSING → **WORKING** (per-request DB
+  re-check: reporter, assigned authority, or admin may fetch a file; URL-type
+  seed evidence is unchanged).
+- **Role-scoped report API** — MISSING → **WORKING** (`GET /api/reports`:
+  citizen=own, authority=department, admin=all; detail is owner/RBAC enforced).
+- **Audit trail** — WORKING (waiting) is extended: `REPORT_CREATED` on every
+  successful submission, `STATUS_CHANGED` on PATCH.
+
+Still MOCK / MISSING (unchanged, future phases): AI classification/severity,
+cross-report flame-similarity clustering, verification CV meters, live incident
+map, hotspot/risk engine, promise SLA engine + deadlines, escalations, community
+votes, settings persistence, broken-promise showcase, civic karma,
+real-time/websockets, email/push notifications, background workers.
 
 ## Phase 1 Update (this revision — Core Backend & Database Foundation)
 

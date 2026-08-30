@@ -246,7 +246,30 @@ New real data surfaces added in Phase 1 (not in the Phase 0 inventory):
 `src/app/api/admin/{audit,stats}`, `src/lib/email/magic-link.ts` (dev preview +
 fail-loud production), `src/app/admin/page.tsx`, `src/app/dashboard/notifications/page.tsx`.
 
-Everything else in the inventory above is unchanged and deferred (P1–P3).
+## Phase 2 — replaced / retired entries / new surfaces
+
+Phase 2 (Real Report → Database Pipeline) further hardened the create path and
+added new real surfaces. Remaining mock rows above are unchanged.
+
+| Entry | Phase 0 type | Phase 2 status |
+| ----- | ------------ | -------------- |
+| #1 Report AI analysis | Fake processing | Retired in Phase 1; the AI claim is **not** simulated — `DetectionDemo`/`PriorityDemo` (P3) remain the only AI-style demos |
+| #5 Evidence upload slots | Empty placeholders | Now render real uploaded evidence items via the authorized `/api/evidence/[id]/file` route |
+| Duplicate detection | Timed `MergeDemo` only | **PARTIAL** — live windowed dedupe (same reporter+category+title ≤60 s → `409 DUPLICATE_REPORT`) + client submit lock; cross-report similarity clustering still P1 |
+| Geocoding / coordinate capture | Free-text/hardcoded | **WORKING** — browser GPS fix (lat/lng/±accuracy) stored with the report; optional reverse geocoder (`GEOCODER_URL`) fills the location label only; address search not built |
+| Evidence upload & storage | Drag-drop zone only | **WORKING** — multipart → magic-byte + MIME/ext + size validation → private storage (local disk or S3-compatible when `STORAGE_*` set) → DB `Evidence`; files served only via authorized route |
+
+New real surfaces added in Phase 2 (not in the Phase 0 inventory):
+`/api/reports` (POST role-agnostic create; GET role-scoped list),
+`/api/reports/[id]` (GET owner/RBAC; PATCH status gate),
+`/api/evidence/[id]/file` (private, DB-rechecked file serving),
+`src/lib/validation/evidence.ts` (magic-byte validation),
+`src/lib/server/storage.ts` (local + S3-compatible backends),
+`src/lib/server/geocode.ts` (optional reverse geocoding),
+`Issue.accuracy` column (migration `20260830065006_report_accuracy`),
+`docs/REPORT_PIPELINE.md`.
+
+Everything else in the inventory above remains unchanged and deferred (P1–P3).
 
 ---
 

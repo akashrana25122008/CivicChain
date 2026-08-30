@@ -105,6 +105,12 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
               {issue.categoryLabel} • {issue.location || 'Location not provided'}{' '}
               <span className="text-neutral-400">• reported {issue.timeLabel}</span>
             </p>
+            {issue.hasLocation && (
+              <p className="mt-1 text-xs text-neutral-500 font-mono">
+                {Number(issue.latitude).toFixed(6)}, {Number(issue.longitude).toFixed(6)}
+                {issue.accuracy != null && <> • GPS ±{Math.round(issue.accuracy)} m</>}
+              </p>
+            )}
             {issue.byCurrentUser && (
               <span className="mt-2 inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">
                 Submitted by you

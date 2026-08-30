@@ -28,6 +28,7 @@ export interface IssueListItem {
   hasLocation: boolean;
   latitude: number | null;
   longitude: number | null;
+  accuracy: number | null;
   /** Reporter display name (only populated on staff/admin views). */
   reporterName: string | null;
 }
@@ -58,7 +59,13 @@ export interface EvidenceVerification {
 export interface EvidenceItem {
   id: string;
   type: string;
+  /**
+   * Browser-accessible URL. External URL evidence is returned verbatim;
+   * uploaded images/videos resolve to the authorized evidence-file route.
+   */
   url: string;
+  /** Stable storage key (object storage / local store). Internal use. */
+  storageKey: string | null;
   fileName: string | null;
   mimeType: string | null;
   sizeBytes: number | null;

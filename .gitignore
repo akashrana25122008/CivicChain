@@ -45,3 +45,6 @@ next-env.d.ts
 
 # citizen evidence uploads (local disk storage in dev)
 /public/uploads
+
+# evidence object storage (local backend)
+/private/

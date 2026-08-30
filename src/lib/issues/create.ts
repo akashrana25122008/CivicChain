@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/server/audit';
 import { createNotification } from '@/lib/server/notify';
+import { ApiError } from '@/lib/server/api';
+import { reverseGeocode } from '@/lib/server/geocode';
 import { getAuthorityDepartmentForCategory } from '@/lib/issues/mapping';
 import type { CreateReportInput } from '@/lib/validation/report';
 
@@ -8,6 +10,12 @@ export interface CreateIssueResult {
   issueId: string;
   publicId: string;
 }
+
+/**
+ * Duplicate-submission window: a second submission of the same title + category
+ * by the same reporter inside this window is treated as an accidental repeat.
+ */
+export const DUPLICATE_WINDOW_MS = 60_000;
 
 /**
  * Creates a real report in PostgreSQL atomically:
@@ -24,6 +32,24 @@ export async function createReport(input: {
 }): Promise<CreateIssueResult> {
   const { reporterId, data } = input;
 
+  // Accidental double submissions (double-click / retry) must not mint two IDs.
+  const duplicate = await prisma.issue.findFirst({
+    where: {
+      reporterId,
+      category: data.category,
+      title: { equals: data.title, mode: 'insensitive' },
+      createdAt: { gte: new Date(Date.now() - DUPLICATE_WINDOW_MS) },
+    },
+    select: { publicId: true },
+  });
+  if (duplicate) {
+    throw new ApiError(
+      409,
+      'DUPLICATE_REPORT',
+      `A report with this title was just created (${duplicate.publicId}) — this was treated as a duplicate submission.`,
+    );
+  }
+
   let authorityId: string | null = null;
   const department = getAuthorityDepartmentForCategory(data.category);
   if (department) {
@@ -32,6 +58,13 @@ export async function createReport(input: {
       select: { id: true },
     });
     authorityId = authority?.id ?? null;
+  }
+
+  // Reverse-geocode coordinates when the citizen only provided a pin.
+  let location = data.location || null;
+  if (!location && data.latitude != null && data.longitude != null) {
+    const address = await reverseGeocode(data.latitude, data.longitude);
+    if (address) location = address;
   }
 
   const evidenceMetadata = input.evidenceFiles;
@@ -50,10 +83,11 @@ export async function createReport(input: {
         title: data.title,
         description: data.description || null,
         category: data.category,
-        location: data.location || null,
+        location,
         contact: data.contact || null,
         latitude: data.latitude ?? null,
         longitude: data.longitude ?? null,
+        accuracy: data.accuracy ?? null,
         reporterId,
         authorityId,
       },

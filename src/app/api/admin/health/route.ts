@@ -3,6 +3,7 @@ import { handleApiError } from '@/lib/server/api';
 import { requireRole } from '@/lib/server/session';
 import { prisma } from '@/lib/db';
 import { stat } from 'node:fs/promises';
+import { storageBackend } from '@/lib/server/storage';
 
 /**
  * ADMIN-only system health probe. Each check fails independently instead of
@@ -12,7 +13,7 @@ export async function GET() {
   try {
     await requireRole('ADMIN');
 
-    const [database, postgis, storage] = await Promise.all([
+    const [database, postgis] = await Promise.all([
       prisma.$queryRaw`SELECT 1 AS ok`.then(() => ({ ok: true as const })).catch((e: unknown) => ({
         ok: false as const,
         error: e instanceof Error ? e.message.slice(0, 160) : 'connection failed',
@@ -23,10 +24,19 @@ export async function GET() {
           ok: false as const,
           error: e instanceof Error ? e.message.slice(0, 160) : 'postgis unavailable',
         })),
-      stat(process.env.EVIDENCE_STORAGE_DIR || 'public/uploads')
-        .then((s) => ({ ok: true as const, writable: s.isDirectory() }))
-        .catch(() => ({ ok: false as const, error: 'storage directory missing' })),
     ]);
+
+    const backend = storageBackend();
+    const storage =
+      backend === 's3'
+        ? { ok: true as const, backend: 's3' as const }
+        : {
+            ok: true as const,
+            backend: 'local' as const,
+            writable: await stat(process.env.EVIDENCE_STORAGE_DIR || 'private/uploads')
+              .then((s) => s.isDirectory())
+              .catch(() => false),
+          };
 
     const authSecret = Boolean(process.env.AUTH_SECRET);
     const authEmailConfigured = Boolean(process.env.EMAIL_SERVER);

@@ -25,6 +25,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/admin') ||
     pathname === '/report' ||
     pathname.startsWith('/api/issues') ||
+    pathname.startsWith('/api/reports') ||
+    pathname.startsWith('/api/evidence/') ||
     pathname.startsWith('/api/department') ||
     pathname.startsWith('/api/my-reports') ||
     pathname.startsWith('/api/notifications') ||
