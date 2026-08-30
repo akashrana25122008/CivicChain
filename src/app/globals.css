@@ -1,26 +1,431 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme inline {
+  /* Colors - CivicChain Brand (Deep Navy → Royal Blue → Periwinkle → Light Blue) */
+  --color-brand-50: #eef3ff;
+  --color-brand-100: #dbe6ff;
+  --color-brand-200: #c3d2ff;
+  --color-brand-300: #b0c1ff;
+  --color-brand-400: #98abff;
+  --color-brand-500: #7692ff; /* Soft Periwinkle — highlight / interactive */
+  --color-brand-600: #3f53ec;
+  --color-brand-700: #1b2cc1; /* Royal Blue — primary action */
+  --color-brand-800: #14248a;
+  --color-brand-900: #091540; /* Deep Navy — primary dark background */
+  --color-brand-950: #050b28;
+
+  --color-accent-50: #fffbeb;
+  --color-accent-100: #fef3c7;
+  --color-accent-200: #fde68a;
+  --color-accent-300: #fcd34d;
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+  --color-accent-700: #b45309;
+  --color-accent-800: #92400e;
+  --color-accent-900: #78350f;
+
+  /* Status Colors */
+  --color-status-active: #3b82f6;
+  --color-status-assigned: #8b5cf6;
+  --color-status-promised: #06b6d4;
+  --color-status-onTrack: #22c55e;
+  --color-status-atRisk: #f59e0b;
+  --color-status-verificationPending: #8b5cf6;
+  --color-status-resolved: #16a34a;
+  --color-status-partiallyResolved: #f59e0b;
+  --color-status-brokenPromise: #ef4444;
+
+  /* Semantic */
+  --color-success-light: #22c55e;
+  --color-success: #16a34a;
+  --color-success-dark: #15803d;
+  --color-warning-light: #fbbf24;
+  --color-warning: #f59e0b;
+  --color-warning-dark: #d97706;
+  --color-danger-light: #f87171;
+  --color-danger: #ef4444;
+  --color-danger-dark: #dc2626;
+
+  /* Neutral */
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
+  --color-neutral-950: #09090b;
+
+  /* Dark Mode - Deep Navy Tinted */
+  --color-dark-bg: #091540;
+  --color-dark-bg-elevated: #0e1f52;
+  --color-dark-bg-card: #13205e;
+  --color-dark-border: #1e2f74;
+  --color-dark-border-hover: #334a9e;
+
+  /* CivicChain Theme Journey (single continuous visual environment) */
+  --color-civic-deep: #091540; /* Hero, Promise Ledger, final CTA */
+  --color-civic-royal: #1b2cc1; /* active / interactive / AI sections */
+  --color-civic-peri: #7692ff; /* data viz, highlights, secondary */
+  --color-civic-light: #abd2fa; /* lighter supporting sections */
+  --color-civic-tint: #e7eefc; /* very light derived surface (cards/support) */
+  --color-civic-tint-soft: #f3f7ff; /* softest derived surface */
+
+  /* Typography */
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  /* Spacing Scale (4px base) */
+  --spacing-0: 0;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-7: 1.75rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --spacing-12: 3rem;
+  --spacing-14: 3.5rem;
+  --spacing-16: 4rem;
+  --spacing-20: 5rem;
+  --spacing-24: 6rem;
+  --spacing-28: 7rem;
+  --spacing-32: 8rem;
+  --spacing-36: 9rem;
+  --spacing-40: 10rem;
+  --spacing-48: 12rem;
+  --spacing-56: 14rem;
+  --spacing-64: 16rem;
+
+  /* Radius */
+  --radius-none: 0;
+  --radius-sm: 0.25rem;
+  --radius-default: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  --radius-full: 9999px;
+
+  /* Shadows - Elevation by Lightness */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-default: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --shadow-2xl: 0 35px 60px -15px rgb(0 0 0 / 0.3);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+
+  /* Dark Mode Shadows */
+  --shadow-dark-sm: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --shadow-dark-default: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-dark-md: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  --shadow-dark-lg: 0 20px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+  --shadow-dark-xl: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-default: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slower: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-spring-gentle: 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Breakpoints */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* Container */
+  --container-max: 1400px;
+  --container-padding: 1.5rem;
+  --container-padding-sm: 2rem;
+  --container-padding-lg: 3rem;
+  --container-padding-xl: 4rem;
+
+  /* Z-Index */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 700;
+  --z-toast: 800;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --background: #ffffff;
+  --foreground: #09090b;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0a0f1a;
+    --foreground: #fafafa;
   }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.6;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-body {
+    font-family: var(--font-body);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Display type scale with clamp */
+  .display-7xl {
+    font-size: clamp(3rem, 8vw, 4.768rem);
+    line-height: 1.1;
+    letter-spacing: -0.04em;
+    font-weight: 700;
+  }
+
+  .display-6xl {
+    font-size: clamp(2.5rem, 6vw, 3.815rem);
+    line-height: 1.1;
+    letter-spacing: -0.04em;
+    font-weight: 700;
+  }
+
+  .display-5xl {
+    font-size: clamp(2rem, 5vw, 3.052rem);
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    font-weight: 600;
+  }
+
+  .display-4xl {
+    font-size: clamp(1.75rem, 4vw, 2.441rem);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  .display-3xl {
+    font-size: clamp(1.5rem, 3vw, 1.953rem);
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  .display-2xl {
+    font-size: clamp(1.25rem, 2.5vw, 1.563rem);
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    font-weight: 600;
+  }
+
+  /* ===== CivicChain ambient theme system =====
+     Section surfaces flow through the four brand colors as one continuous
+     environment — no disconnected white voids. Classes use :where() (zero
+     specificity) so existing `dark:bg-*` and text utilities still win in
+     dark mode; in light mode the themed gradient shows. */
+  :where(.theme-deep) {
+    background: radial-gradient(120% 120% at 50% 0%, #0a1750 0%, #091540 55%, #0e1f52 100%);
+    color: #eaf0ff;
+  }
+  :where(.theme-royal) {
+    background: linear-gradient(180deg, #0a1450 0%, #12207a 55%, #1b2cc1 100%);
+    color: #eaf0ff;
+  }
+  :where(.theme-peri) {
+    background: linear-gradient(180deg, #1b2cc1 0%, #3f53ec 45%, #7692ff 100%);
+    color: #f4f7ff;
+  }
+  :where(.theme-light) {
+    background: linear-gradient(180deg, #abd2fa 0%, #c9ddff 50%, #e7eefc 100%);
+    color: #0a1440;
+  }
+  :where(.theme-tint) {
+    background: linear-gradient(180deg, #e7eefc 0%, #f3f7ff 100%);
+    color: #091540;
+  }
+
+  /* Section text-adapters: default to the section's `color`, but allow an
+     explicit light/dark override when a component must be themed independently. */
+  :where(.on-dark) {
+    color: #eaf0ff;
+  }
+  :where(.on-dark-muted) {
+    color: #b9c6f2;
+  }
+  :where(.on-light) {
+    color: #091540;
+  }
+  :where(.on-light-muted) {
+    color: #3a4a86;
+  }
+
+  /* Ambient moving gradient blobs (GPU transform/opacity only). */
+  .ambient-blob {
+    position: absolute;
+    border-radius: 9999px;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+
+  /* Subtle geographic grid used as an ambient texture. */
+  .ambient-grid {
+    background-image:
+      linear-gradient(rgba(118, 146, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(118, 146, 255, 0.06) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  /* Scroll progress indicator track. */
+  .scroll-progress-track {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgba(171, 210, 250, 0.18);
+    z-index: 300;
+  }
+  .scroll-progress-bar {
+    height: 100%;
+    width: 100%;
+    transform-origin: left center;
+    background: linear-gradient(90deg, #7692ff, #abd2fa);
+  }
+
+  /* Custom cursor (pointer:fine devices only). */
+  @media (pointer: fine) {
+    .cursor-dot,
+    .cursor-ring {
+      position: fixed;
+      top: 0;
+      left: 0;
+      border-radius: 9999px;
+      pointer-events: none;
+      z-index: 400;
+      will-change: transform;
+    }
+    .cursor-dot {
+      width: 6px;
+      height: 6px;
+      margin: -3px 0 0 -3px;
+      background: #7692ff;
+    }
+    .cursor-ring {
+      width: 34px;
+      height: 34px;
+      margin: -17px 0 0 -17px;
+      border: 1.5px solid rgba(118, 146, 255, 0.5);
+      transition: opacity 0.2s ease;
+    }
+  }
+  @media (hover: none), (pointer: coarse) {
+    .cursor-dot,
+    .cursor-ring {
+      display: none;
+    }
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Focus visible */
+  .focus-visible-ring:focus-visible {
+    outline: none;
+    ring: 2px;
+    ring-color: var(--color-brand-500);
+    ring-offset: 2px;
+    ring-offset-color: var(--background);
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-neutral-300) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-neutral-300);
+    border-radius: 3px;
+  }
+
+  .dark .scrollbar-thin {
+    scrollbar-color: var(--color-dark-border-hover) transparent;
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-dark-border-hover);
+  }
+}
+
+@layer components {
+  /* Selection */
+  ::selection {
+    background-color: var(--color-brand-200);
+    color: var(--color-brand-900);
+  }
+
+  .dark ::selection {
+    background-color: var(--color-brand-800);
+    color: var(--color-brand-100);
+  }
 }
