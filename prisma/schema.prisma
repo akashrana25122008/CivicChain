@@ -606,7 +606,7 @@ model Incident {
  */
 model EscalationRule {
   id          String   @id @default(cuid())
-  name        String
+  name        String   @unique
   enabled     Boolean  @default(true)
   priority    Int      @default(0) // lower number evaluated first
   fromLevel   Int      @default(0) // minimum current escalation level required to trigger (0 = any)

@@ -28,7 +28,8 @@ test('valid transitions', () => {
     [A, REJ],
     [IP, RES],
     [IP, REJ],
-    [RES, IP], // reopen
+    [RES, IP], // reopen (loss / citizen dispute -> in-progress)
+    [RES, V], // citizen verification YES -> VERIFIED
     [REJ, UR], // reopen rejected
   ];
   for (const [from, to] of valid) {

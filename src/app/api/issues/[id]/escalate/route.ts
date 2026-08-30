@@ -4,6 +4,7 @@ import { handleApiError, ApiError, badRequest, notFound, forbidden } from '@/lib
 import { recordAudit } from '@/lib/server/audit';
 import { createNotification } from '@/lib/server/notify';
 import { getOwnAuthority } from '@/lib/server/dept';
+import { nextEscalationLevel } from '@/lib/escalation/levels';
 import { prisma } from '@/lib/db';
 
 export interface RouteContext {
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
     if (open) throw badRequest('This issue already has an open escalation.');
 
     const max = await prisma.escalation.aggregate({ where: { issueId: id }, _max: { level: true } });
-    const level = (max._max.level ?? 0) + 1;
+    const level = nextEscalationLevel(max._max.level ?? 0);
 
     const authority = actor.role === 'AUTHORITY' ? await getOwnAuthority(actor) : null;
 

@@ -12,6 +12,7 @@ import { recordAudit } from '@/lib/server/audit';
 import { createNotification } from '@/lib/server/notify';
 import { formatRelativeTime } from '@/lib/utils';
 import type { EscalationItem } from '@/lib/issues/types';
+import { nextEscalationLevel } from '@/lib/escalation/levels';
 import { prisma } from '@/lib/db';
 
 function toEscalationItem(row: {
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
       where: { issueId },
       _max: { level: true },
     });
-    const level = (max._max.level ?? 0) + 1;
+    const level = nextEscalationLevel(max._max.level ?? 0);
 
     const escalation = await prisma.escalation.create({
       data: {

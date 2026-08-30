@@ -410,6 +410,54 @@ async function main() {
       ? `[seed] Inserted ${demoIssues.length} demo issues. Sign in via magic link at the seeded emails.`
       : '[seed] Demo issues already present — only verification/escalation queues refreshed.',
   );
+
+  // Phase 7 — Escalation rules. These are CONFIGURATION (not demo data): the
+  // automated escalation engine only fires when enabled rules exist, so we
+  // provision a sane 4-step ladder idempotently. Operators can edit/disable
+  // them via the EscalationRule table; nothing here is fabricated at eval time.
+  const ESCALATION_RULES = [
+    {
+      name: 'SLA 80% / resolution overdue-risk (Level 1)',
+      priority: 1,
+      fromLevel: 0,
+      targetLevel: 1,
+      minSeverity: 'MEDIUM' as const,
+      conditions: { slaPctGte: 80, statusNotIn: ['RESOLVED', 'REJECTED'] },
+    },
+    {
+      name: 'SLA breached (Level 2)',
+      priority: 2,
+      fromLevel: 1,
+      targetLevel: 2,
+      minSeverity: 'MEDIUM' as const,
+      conditions: { slaPctGte: 100, statusNotIn: ['RESOLVED', 'REJECTED'] },
+    },
+    {
+      name: 'Continued breach / high severity (Level 3)',
+      priority: 3,
+      fromLevel: 2,
+      targetLevel: 3,
+      minSeverity: 'HIGH' as const,
+      conditions: { statusNotIn: ['RESOLVED', 'REJECTED'] },
+    },
+    {
+      name: 'Severe unresolved high-priority issue (Level 4 / Admin)',
+      priority: 4,
+      fromLevel: 3,
+      targetLevel: 4,
+      minSeverity: 'HIGH' as const,
+      minPriority: 70,
+      conditions: { statusNotIn: ['RESOLVED', 'REJECTED'] },
+    },
+  ];
+  for (const rule of ESCALATION_RULES) {
+    await prisma.escalationRule.upsert({
+      where: { name: rule.name },
+      update: { ...rule },
+      create: { ...rule },
+    });
+  }
+  console.log(`[seed] Escalation rules ensured: ${ESCALATION_RULES.length} enabled ladder steps.`);
 }
 
 main()

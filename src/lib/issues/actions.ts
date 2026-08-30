@@ -6,6 +6,7 @@ import { transitionIssue } from '@/lib/issues/transition';
 import { getOwnAuthority } from '@/lib/server/dept';
 import { evaluateEscalations } from '@/lib/escalation/engine';
 import { syncPromiseForIssue, reconcilePromiseStatus } from '@/lib/sla/promise';
+import { applyKarmaEvent } from '@/lib/community/karma';
 import {
   IssueStatus,
   type Prisma,
@@ -216,14 +217,18 @@ export async function verifyIssue(input: {
     throw new ApiError(400, 'INVALID_STATE_TRANSITION', 'Only resolved issues can be verified by the reporter.');
   }
   if (outcome === 'DISPUTED') {
-    // Disputing reopens the issue through the state machine.
-    await transitionIssue({ issueId, actor, nextStatus: IssueStatus.IN_PROGRESS, note: feedback });
+    // Disputing reopens the issue through the state machine. The citizenVerify
+    // capability is exactly the narrow reporter-authorized verification edge.
+    await transitionIssue({ issueId, actor, nextStatus: IssueStatus.IN_PROGRESS, note: feedback, citizenVerify: true });
     // A citizen dispute is a strong accountability signal — evaluate escalation
     // rules (idempotent; a failure here must not corrupt the reopen above).
     await evaluateEscalations(issueId).catch(() => undefined);
     return { changed: true, issueId, dispute: true };
   }
-  await transitionIssue({ issueId, actor, nextStatus: IssueStatus.VERIFIED, note: feedback });
+  await transitionIssue({ issueId, actor, nextStatus: IssueStatus.VERIFIED, note: feedback, citizenVerify: true });
+  // A successfully verified report earns its reporter civic karma (Phase 10,
+  // REPORT_VERIFIED). Best-effort + idempotent — never corrupts the transition.
+  await applyKarmaEvent({ userId: actor.id, type: 'REPORT_VERIFIED', issueId }).catch(() => undefined);
   return { changed: true, issueId, dispute: false };
 }
 

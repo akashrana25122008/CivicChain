@@ -10,6 +10,7 @@
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/server/audit';
 import { ApiError, badRequest, notFound } from '@/lib/server/api';
+import { applyKarmaEvent } from '@/lib/community/karma';
 import { VoteType, type User } from '../../../generated/prisma/client';
 
 export const VOTE_TYPES: VoteType[] = ['CONFIRM', 'DISPUTE', 'SUPPORT', 'DUPLICATE'];
@@ -63,6 +64,14 @@ export async function castVote(input: {
       entityId: vote.id,
       metadata: { type },
     });
+    // A helpful, confirmed community signal earns the voter civic karma
+    // (Phase 10, HELPFUL_CONFIRMATION). Only for freshly created votes; best-
+    // effort + idempotent via dedupeKey so karma never corrupts the vote.
+    if (vote.type === 'CONFIRM') {
+      await applyKarmaEvent({ userId: actor.id, type: 'HELPFUL_CONFIRMATION', issueId }).catch(
+        () => undefined,
+      );
+    }
     return { id: vote.id, issueId, type, created: true };
   } catch (err) {
     // Prisma P2002 = unique constraint (issueId, userId, type) — an existing
