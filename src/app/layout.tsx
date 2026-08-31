@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import { Playfair_Display, DM_Sans, JetBrains_Mono } from 'next/font/google';
 import { SessionProvider } from '@/components/providers/SessionProvider';
+import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { auth } from '@/lib/auth/auth';
 import './globals.css';
+
+const THEME_SCRIPT = `(function(){try{var m=document.cookie.match(/(?:^|; )cc-theme=([^;]*)/);var p=m&&m[1]?m[1].toUpperCase():'SYSTEM';var d=p==='DARK'||(p==='SYSTEM'&&!window.matchMedia('(prefers-color-scheme: light)').matches);if(d){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`;
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
@@ -76,6 +79,7 @@ export default async function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col bg-white dark:bg-dark-bg text-neutral-900 dark:text-neutral-100">
         <SessionProvider
@@ -92,7 +96,7 @@ export default async function RootLayout({
               : null
           }
         >
-          {children}
+          <ThemeProvider>{children}</ThemeProvider>
         </SessionProvider>
       </body>
     </html>

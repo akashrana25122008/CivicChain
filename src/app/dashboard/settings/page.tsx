@@ -1,11 +1,10 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Input';
 import { NotificationPreferencesPanel } from '@/components/notifications/NotificationPreferencesPanel';
-import { User, Bell, Shield, Palette } from 'lucide-react';
+import { ProfilePanel } from '@/components/settings/ProfilePanel';
+import { PreferencesPanel } from '@/components/settings/PreferencesPanel';
+import { User, Palette, Bell, Shield } from 'lucide-react';
 
 export default function SettingsPage() {
   return (
@@ -25,20 +24,20 @@ export default function SettingsPage() {
               Profile
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Input label="Full Name" placeholder="John Doe" defaultValue="John Doe" />
-            <Input label="Email" placeholder="john@example.com" defaultValue="john@example.com" type="email" />
-            <Input label="Phone" placeholder="+91 98765 43210" defaultValue="+91 98765 43210" />
-            <Select
-              label="Role"
-              options={[
-                { value: 'citizen', label: 'Citizen Reporter' },
-                { value: 'authority', label: 'Authority' },
-                { value: 'admin', label: 'Administrator' },
-              ]}
-              defaultValue="citizen"
-            />
-            <Button>Save Changes</Button>
+          <CardContent>
+            <ProfilePanel />
+          </CardContent>
+        </Card>
+
+        <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+          <CardHeader>
+            <CardTitle as="h2" className="text-lg flex items-center gap-2">
+              <Palette className="w-5 h-5 text-purple-500" />
+              Preferences
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PreferencesPanel />
           </CardContent>
         </Card>
 
@@ -49,7 +48,7 @@ export default function SettingsPage() {
               Notifications
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <NotificationPreferencesPanel />
             <p className="text-[11px] text-neutral-400">
               Changes are saved immediately and apply to every notification you

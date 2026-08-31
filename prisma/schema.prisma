@@ -259,6 +259,7 @@ model User {
   authorities    Authority[]     @relation("AuthorityUser")
   notifications  Notification[]
   notificationPreferences NotificationPreference[]
+  preferences UserPreferences?
   auditLogs      AuditLog[]      @relation("AuditActor")
   votes          Vote[]
   karmaEvents    KarmaEvent[]
@@ -663,6 +664,39 @@ model EscalationRule {
   updatedAt   DateTime @updatedAt
 
   @@index([enabled, priority])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 14 — User preferences (settings actually working)
+// ---------------------------------------------------------------------------
+
+/** How the user wants the app themed (Phase 14). SYSTEM follows the OS. */
+enum ThemePreference {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+/**
+ * A single persisted preferences row per user (Phase 14). Looked up and updated
+ * ONLY via the authenticated session user id — never a browser-supplied userId.
+ * `theme` drives a real class-based dark mode; `language` is stored for future
+ * i18n; the boolean flags are per-user notification toggles layered on top of
+ * the Phase 13 channel preferences.
+ */
+model UserPreferences {
+  id        String           @id @default(cuid())
+  userId    String           @unique
+  theme     ThemePreference  @default(SYSTEM)
+  language  String           @default("en")
+  weeklyDigest Boolean       @default(false)
+  reportUpdates Boolean       @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------

@@ -91,11 +91,50 @@ exit 0 (both new routes `/api/notifications/{read-all,preferences}` included);
 `dedupeKey` idempotency, IN_APP preference gating, email channel honest
 non-delivery, cleanup).
 
+## Phase 14 Update (this revision — Settings Actually Working)
+
+The Settings page is no longer static mock inputs. Profile identity and user
+preferences are now real, persisted, and — for the theme — actually applied at
+runtime via a class-based dark mode.
+
+- **Persisted user preferences** — MISSING → **WORKING**. New `UserPreferences`
+  model (one row per user, unique on `userId`, cascade-deleted) with
+  `GET/PATCH /api/me/preferences`. Fields: `theme` (LIGHT/DARK/SYSTEM),
+  `language`, `weeklyDigest`, `reportUpdates`. GET always returns a fully-resolved
+  view (defaults when no row exists); PATCH validates every value server-side and
+  **rejects unknown keys** — values are never trusted from the browser for
+  another user.
+- **Theme actually works (class-based dark mode)** — the app previously relied
+  purely on `prefers-color-scheme`. Now a `@custom-variant dark` enables a real
+  `.dark` class toggle; a `ThemeProvider` (with an inline pre-paint script in
+  `layout.tsx` reading the `cc-theme` cookie) applies the persisted preference
+  with no flash of wrong theme, follows the OS when `SYSTEM`, and the Settings →
+  Preferences segmented Light/Dark/System control switches it instantly.
+- **Profile** — MOCK → **WORKING**. New `GET/PATCH /api/me/profile`: the full
+  name is editable and persisted to the `User` record (trimmed, length-capped);
+  email and role are read-only (identity/privilege attributes, not self-service
+  editable). The previous fake `defaultValue` inputs and role selector are gone.
+- **Language** persisted — `language` is stored per user and returned with a
+  curated list on the Settings → Preferences panel.
+- **Notification integration** — the Phase 13 `NotificationPreferencesPanel`
+  remains the real, persisted channel toggles on the Settings → Notifications
+  card; the new digest/report-updates flags live alongside it. No channel prefs
+  were disrupted.
+- New pure, unit-tested helpers in `src/lib/server/preferences.ts` and
+  `src/lib/server/profile.ts` (default resolution, patch validation, unknown-key
+  rejection, name trimming/capping).
+
+Verification: `tsc --noEmit` clean; eslint clean (0 errors/warnings) for all new
+and changed files; `next build` exit 0 (new routes
+`/api/me/{preferences,profile}` included); 77/77 unit tests pass (67 baseline +
+10 new); live Postgres smoke test of `UserPreferences` upsert→update→read and
+missing-row default behaviour.
+
 ## Summary
 
 | WORKING | PARTIAL | MOCK | MISSING | UNKNOWN |
 | ------: | ------: | ---: | ------: | ------: |
-|      21 |      11 |    9 |       6 |       0 |
+|      22 |      11 |    8 |       6 |       0 |
 
 ## Phase 3/4 Update (this revision — Real AI Analysis + Duplicate Detection + Priority Engine)
 
@@ -376,7 +415,7 @@ community votes, and civic karma are now real DB-backed logic — updated above.
 | Escalation engine                               | PARTIAL  | **Real** DB-backed `EscalationRule` + Level ladder + idempotent engine (`src/lib/escalation/`); dashboard still shows hardcoded display array, periodic worker blocked (no Redis) | `src/lib/escalation/{levels,rules,engine}.ts`; `src/app/dashboard/escalations/page.tsx` | Attach periodic scheduler + DB-driven dashboard display          |
 | Community verification                          | PARTIAL  | **Real** DB-backed `Vote` rollups via `GET/POST /api/issues/[id]/votes` (`src/lib/community/votes.ts`); dashboard still shows hardcoded `FEEDBACK` | `src/lib/community/votes.ts`; `src/app/api/issues/[id]/votes/route.ts`; `src/app/dashboard/community/page.tsx` | Drive the dashboard from live vote aggregation                 |
 | Authority assignment                            | MOCK     | Hardcoded authority strings                                             | `dashboard/issues/[id]/page.tsx:32`; `promises/page.tsx`; `PromiseLedgerSection.tsx`    | Authority registry + RBAC                                       |
-| Settings / profile                              | MOCK     | `defaultValue` static inputs; no persistence                            | `src/app/dashboard/settings/page.tsx`                                               | Auth-backed user profile                                        |
+| Settings / profile                              | WORKING  | **Real** auth-backed profile: editable/persisted name (`/api/me/profile`); email+role read-only; persisted `UserPreferences` (theme/language/digests) via `/api/me/preferences`; class-based theme toggle; real NotificationPreferencesPanel | `src/app/dashboard/settings/page.tsx`; `src/app/api/me/{preferences,profile}`; `src/components/settings/*`; `src/components/providers/ThemeProvider.tsx` | Add avatar upload + 2FA |
 | Broken-promise marketing section                | MOCK     | Hardcoded `RESOLVED_STORIES`/promise facts                                | `src/components/landing/BrokenPromiseSection.tsx`                                    | Real outcomes from verified issues                              |
 | Report submission persistence                   | WORKING  | **Real** multipart/file/custom evidence → `POST /api/issues` → Postgres | `src/app/api/issues/route.ts` + `[id]`; `src/lib/issues/http.ts`, `query.ts`        | Preserve canonical `/api/issues` path                          |
 | Citizen authentication / sessions               | WORKING  | **Real** NextAuth (JWT + DB user) + middleware                           | `src/app/api/auth/[...nextauth]`; `src/proxy.ts`                                     | Gated role picker on signup (pending sign-in rate-limit fix)    |

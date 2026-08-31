@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Phase 14 — class-based dark mode toggle. The .dark class is applied by the
+   ThemeProvider; the inline script in layout.tsx reads the persisted cookie
+   and applies it before first paint to avoid FOUC. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   /* Colors - CivicChain Brand (Deep Navy → Royal Blue → Periwinkle → Light Blue) */
   --color-brand-50: #eef3ff;
@@ -169,11 +174,12 @@
   --foreground: #09090b;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0f1a;
-    --foreground: #fafafa;
-  }
+/* Dark custom properties follow the .dark class (set by ThemeProvider). SYSTEM
+   mode resolves to a concrete .dark/.light class in JS, so these apply for both
+   an explicit DARK preference and a dark OS when SYSTEM is selected. */
+:root.dark {
+  --background: #0a0f1a;
+  --foreground: #fafafa;
 }
 
 * {
