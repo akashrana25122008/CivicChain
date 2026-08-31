@@ -476,6 +476,8 @@ community votes, and civic karma are now real DB-backed logic — updated above.
 
 ## Notes
 
+- **Phase 16 — Department Command Center (WORKING):** real-time operational console at `/department/command-center` (department root redirect target). Live aggregated KPIs (active / SLA breached / at-risk / on-track / no-SLA, promises honoured/broken + performance %), department priority queue (composite score: severity 0.2 + SLA 0.35 + risk 0.2 + escalation 0.15 + age 0.1; resolved/rejected floor at 0; ≥80/≥60/≥40 → CRITICAL/HIGH/MEDIUM else LOW), department-scoped ward risk + SLA-state-colored Maplibre live map, escalation monitor, and in-app Alerts rail (Phase 13/14). API `GET /api/department/command-center` enforces RBAC via `requireOwnAuthority` (server-side authority resolution) and validates filters. `src/lib/department/queue.ts` (pure) + `src/lib/server/department/commandCenter.ts` (aggregation). **Real-time via SWR polling (15s), not WebSocket** — Next.js-only deployment has no socket server; this follows the established live-map convention. No schema change.
+
 - **Defining honesty boundary:** the frontend currently invents most "business truth"
   (scores, priorities, verdicts) — **except** statuses/identity for authenticated
   users, which are always derived server-side from the DB (role in JWT + DB

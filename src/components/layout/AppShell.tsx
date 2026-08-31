@@ -49,6 +49,7 @@ const HEADER_META: Array<{ prefix: string; meta: WorkspaceMeta }> = [
   { prefix: '/dashboard/risk', meta: { title: 'Risk Intelligence', description: 'Predictive signals for the city.' } },
   { prefix: '/dashboard', meta: { title: 'Civic Dashboard', description: 'Monitor your civic reports and community activity.' } },
   { prefix: '/department/issues', meta: { title: 'Department Workbench', description: 'Issues assigned to your department.' } },
+  { prefix: '/department/command-center', meta: { title: 'Command Center', description: 'Real-time operational view for your department.' } },
   { prefix: '/department/verification', meta: { title: 'Evidence Verification', description: 'Review reported evidence for accuracy.' } },
   { prefix: '/department/escalations', meta: { title: 'Escalations', description: 'Escalated issues that need attention.' } },
   { prefix: '/department/performance', meta: { title: 'Department Performance', description: 'Resolution metrics from the real audit trail.' } },

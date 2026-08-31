@@ -61,6 +61,7 @@ export function navForRole(role?: string | null): WorkspaceNavGroup[] {
         {
           title: 'Operations',
           items: [
+            { href: '/department/command-center', label: 'Command Center', icon: LayoutDashboard },
             { href: '/department/dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { href: '/department/issues', label: 'Issues', icon: FileText },
             { href: '/department/verification', label: 'Verification', icon: ShieldCheck },

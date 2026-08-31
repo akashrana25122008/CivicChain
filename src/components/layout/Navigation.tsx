@@ -29,6 +29,7 @@ import {
   Building2,
   ScrollText,
   HeartPulse,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -87,6 +88,7 @@ const DEPARTMENT_NAV: NavGroup[] = [
   {
     title: 'Operations',
     items: [
+      { href: '/department/command-center', label: 'Command Center', icon: Zap },
       { href: '/department/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/department/issues', label: 'Issues', icon: FileText },
       { href: '/department/verification', label: 'Verification', icon: ShieldCheck },
