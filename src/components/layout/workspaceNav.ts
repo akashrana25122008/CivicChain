@@ -13,6 +13,7 @@ import {
   Building2,
   ScrollText,
   HeartPulse,
+  ShieldAlert,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -69,7 +70,10 @@ export function navForRole(role?: string | null): WorkspaceNavGroup[] {
         },
         {
           title: 'Intelligence',
-          items: [{ href: '/map', label: 'Map', icon: MapIcon }],
+          items: [
+            { href: '/map', label: 'Map', icon: MapIcon },
+            { href: '/dashboard/risk', label: 'Risk Intelligence', icon: ShieldAlert },
+          ],
         },
         {
           title: 'System',
@@ -95,6 +99,7 @@ export function navForRole(role?: string | null): WorkspaceNavGroup[] {
           title: 'Oversight',
           items: [
             { href: '/map', label: 'Map', icon: MapIcon },
+            { href: '/dashboard/risk', label: 'Risk Intelligence', icon: ShieldAlert },
             { href: '/admin/audit', label: 'Audit Logs', icon: ScrollText },
             { href: '/admin/health', label: 'System Health', icon: HeartPulse },
           ],
