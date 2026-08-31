@@ -1,7 +1,7 @@
 'use client';
 
 import useSWR from 'swr';
-import { RefreshCw, Database, MapPin, KeyRound, Mail, FolderArchive, Activity } from 'lucide-react';
+import { RefreshCw, Database, MapPin, KeyRound, Mail, FolderArchive, Activity, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -13,10 +13,15 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 type Check = {
   ok: boolean;
+  okNonZero?: boolean;
+  status?: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'CRITICAL' | 'NOT_CONFIGURED' | 'UNKNOWN';
   error?: string;
   version?: string;
   note?: string;
   writable?: boolean;
+  total?: number;
+  failed?: number;
+  nonInApp?: number;
 };
 
 interface HealthData {
@@ -26,7 +31,13 @@ interface HealthData {
     auth: Check;
     email: Check;
     storage: Check;
+    ai: Check;
+    notifications: Check;
+    redis: Check;
+    queue: Check;
+    websocket: Check;
   };
+  overall: Check;
   totals: {
     users: number;
     issues: number;
@@ -44,7 +55,17 @@ const CHECK_META: Array<{ key: keyof HealthData['checks']; icon: typeof Database
   { key: 'auth', icon: KeyRound, title: 'Auth secret' },
   { key: 'email', icon: Mail, title: 'Email transport' },
   { key: 'storage', icon: FolderArchive, title: 'Evidence storage' },
+  { key: 'ai', icon: Activity, title: 'AI classification' },
+  { key: 'notifications', icon: Bell, title: 'Notifications' },
+  { key: 'redis', icon: Database, title: 'Redis' },
+  { key: 'queue', icon: Activity, title: 'Job queue' },
+  { key: 'websocket', icon: Activity, title: 'WebSocket' },
 ];
+
+function checkStatusDark(c: Check): 'resolved' | 'brokenPromise' {
+  if (c.status === 'NOT_CONFIGURED') return 'brokenPromise';
+  return c.ok ? 'resolved' : 'brokenPromise';
+}
 
 export default function AdminHealth() {
   const { data, error, isLoading, mutate } = useSWR<HealthData>(
@@ -53,7 +74,8 @@ export default function AdminHealth() {
     { refreshInterval: 60000 },
   );
 
-  const allOk = (data?.checks ? Object.values(data.checks).every((c) => c.ok) : false);
+  const allOk = data?.overall?.ok ?? false;
+  const overallStatus = data?.overall?.status ?? 'UNKNOWN';
 
   return (
     <div className="p-6 md:p-8">
@@ -73,8 +95,9 @@ export default function AdminHealth() {
       {data && (
         <div className="mb-8 flex items-center gap-2">
           <Badge variant="status" status={allOk ? 'resolved' : 'brokenPromise'} size="md">
-            {allOk ? 'All checks passing' : 'Some checks need attention'}
+            {allOk ? 'All checks passing' : overallStatus === 'CRITICAL' ? 'Critical system down' : 'Some checks need attention'}
           </Badge>
+          {data?.overall?.note && <span className="text-sm text-neutral-500">{data.overall.note}</span>}
           <span className="text-sm text-neutral-500">probed on demand</span>
         </div>
       )}
@@ -88,7 +111,11 @@ export default function AdminHealth() {
                 <CardTitle as="h2" className="text-base flex items-center gap-2">
                   <Icon className="w-4 h-4 text-neutral-400" /> {title}
                 </CardTitle>
-                {check && <Badge variant="status" status={check.ok ? 'resolved' : 'brokenPromise'} size="sm">{check.ok ? 'OK' : 'FAIL'}</Badge>}
+                {check && (
+                  <Badge variant="status" status={checkStatusDark(check)} size="sm">
+                    {check.status === 'NOT_CONFIGURED' ? 'N/A' : check.ok ? 'OK' : 'FAIL'}
+                  </Badge>
+                )}
               </CardHeader>
               <CardContent>
                 {!check ? (

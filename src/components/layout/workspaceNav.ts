@@ -13,6 +13,7 @@ import {
   Building2,
   ScrollText,
   HeartPulse,
+  Gauge,
   ShieldAlert,
   type LucideIcon,
 } from 'lucide-react';
@@ -89,6 +90,7 @@ export function navForRole(role?: string | null): WorkspaceNavGroup[] {
         {
           title: 'Control Center',
           items: [
+            { href: '/admin/command-center', label: 'Command Center', icon: Gauge },
             { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { href: '/admin/users', label: 'Users', icon: Users },
             { href: '/admin/departments', label: 'Departments', icon: Building2 },

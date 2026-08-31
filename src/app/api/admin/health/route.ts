@@ -41,7 +41,7 @@ export async function GET() {
     const authSecret = Boolean(process.env.AUTH_SECRET);
     const authEmailConfigured = Boolean(process.env.EMAIL_SERVER);
 
-    const [users, issues, auditLogs, notificationsUnread, escalationsOpen, pendingEvidence, verifications] =
+    const [users, issues, auditLogs, notificationsUnread, escalationsOpen, pendingEvidence, verifications, aiByStatus, notificationTotal, notificationFailed] =
       await Promise.all([
         prisma.user.count(),
         prisma.issue.count(),
@@ -52,26 +52,106 @@ export async function GET() {
           where: { verifications: { none: { status: 'VERIFIED' } } },
         }),
         prisma.verification.count(),
+        prisma.aIAnalysis.groupBy({ by: ['status'], _count: { _all: true } }),
+        prisma.notification.count(),
+        prisma.notification.count({ where: { channel: { not: 'IN_APP' } } }),
       ]);
 
-    return NextResponse.json({
-      checks: {
-        database,
-        postgis,
-        auth: {
-          ok: authSecret,
-          note: authSecret
-            ? 'AUTH_SECRET configured'
-            : 'AUTH_SECRET missing — sessions cannot be trusted',
-        },
-        email: {
-          ok: authEmailConfigured,
-          note: authEmailConfigured
-            ? 'EMAIL_SERVER configured'
-            : 'EMAIL_SERVER not configured — dev magic-link preview is active',
-        },
-        storage,
+    const aiTotal = aiByStatus.reduce((s, r) => s + r._count._all, 0);
+    const aiFailed = aiByStatus
+      .filter((r) => r.status === 'FAILED')
+      .reduce((s, r) => s + r._count._all, 0);
+
+    // Environment-dependent subsystems. These are reported honestly — a service
+    // that is not present in the current deployment is marked NOT_CONFIGURED
+    // rather than falsely reported healthy.
+    const ai = {
+      ok: aiTotal === 0 || aiFailed < aiTotal, // healthy when idle or no alarming failure share
+      okNonZero: aiTotal > 0,
+      status: aiTotal === 0 ? 'NOT_CONFIGURED' as const : (aiFailed >= aiTotal ? 'DOWN' as const : (aiFailed / aiTotal > 0.25 ? 'DEGRADED' as const : 'HEALTHY' as const)),
+      total: aiTotal,
+      failed: aiFailed,
+      note: aiTotal === 0
+        ? 'No AI classification runs recorded yet.'
+        : `${aiTotal} analysis runs, ${aiFailed} failed.`,
+    };
+
+    const notifications = {
+      ok: true,
+      status: notificationFailed === 0 || notificationTotal === 0 ? 'HEALTHY' as const : 'DEGRADED' as const,
+      total: notificationTotal,
+      nonInApp: notificationFailed,
+      note: notificationTotal === 0
+        ? 'No notifications recorded yet.'
+        : notificationFailed > 0
+          ? `${notificationFailed} non-in-app delivery records exist; verify provider health.`
+          : 'Notification delivery operational.',
+    };
+
+    const redis = {
+      ok: false,
+      okNonZero: false,
+      status: 'NOT_CONFIGURED' as const,
+      note: 'Redis not configured in this deployment — rate limiting falls back to in-memory.',
+    };
+
+    const queue = {
+      ok: false,
+      okNonZero: false,
+      status: 'NOT_CONFIGURED' as const,
+      note: 'No background-job queue (BullMQ/Redis) configured — heavy work runs in-band where required.',
+    };
+
+    const websocket = {
+      ok: false,
+      okNonZero: false,
+      status: 'NOT_CONFIGURED' as const,
+      note: 'No standalone WebSocket server in this Next.js deployment — realtime uses SWR polling.',
+    };
+
+    const checks = {
+      database,
+      postgis,
+      auth: {
+        ok: authSecret,
+        note: authSecret
+          ? 'AUTH_SECRET configured'
+          : 'AUTH_SECRET missing — sessions cannot be trusted',
       },
+      email: {
+        ok: authEmailConfigured,
+        note: authEmailConfigured
+          ? 'EMAIL_SERVER configured'
+          : 'EMAIL_SERVER not configured — dev magic-link preview is active',
+      },
+      storage,
+      ai,
+      notifications,
+      redis,
+      queue,
+      websocket,
+    };
+
+    const critical = [
+      database.ok,
+      postgis.ok,
+      authSecret,
+      storage?.ok ?? false,
+    ];
+    const degradedOnly = !Object.values(checks).every((c) => c.ok) && critical.every(Boolean);
+    const overall = {
+      ok: Object.values(checks).every((c) => c.ok),
+      status: (Object.values(checks).every((c) => c.ok) ? 'HEALTHY' : critical.every(Boolean) ? 'DEGRADED' : 'CRITICAL') as 'HEALTHY' | 'DEGRADED' | 'CRITICAL',
+      note: Object.values(checks).every((c) => c.ok)
+        ? 'All probes passing.'
+        : degradedOnly
+          ? 'All critical services healthy; non-critical optional subsystems not at full health.'
+          : 'A critical system is not healthy — investigate immediately.',
+    };
+
+    return NextResponse.json({
+      checks,
+      overall,
       totals: { users, issues, auditLogs, notificationsUnread, escalationsOpen, pendingEvidence, verifications },
     });
   } catch (error) {
