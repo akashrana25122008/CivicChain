@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/server/session';
 import { formatRelativeTime } from '@/lib/utils';
 import { prisma } from '@/lib/db';
 import { UserRole, RoleApprovalStatus } from '../../../../../generated/prisma/client';
+import { recordAudit } from '@/lib/server/audit';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   CITIZEN: 'Citizen',
@@ -142,14 +143,12 @@ export async function PATCH(request: Request) {
           roleReviewedAt: new Date(),
         },
       });
-      await prisma.auditLog.create({
-        data: {
-          action: 'ROLE_REQUEST_REJECTED',
-          actorId: admin.id,
-          entityType: 'User',
-          entityId: target.id,
-          metadata: { email: target.email, requestedRole: target.requestedRole ?? null },
-        },
+      await recordAudit({
+        action: 'ROLE_REQUEST_REJECTED',
+        actorId: admin.id,
+        entityType: 'User',
+        entityId: target.id,
+        metadata: { email: target.email, requestedRole: target.requestedRole ?? null },
       });
       return NextResponse.json({ ok: true, user: { id: updated.id, role: updated.role, roleStatus: updated.roleStatus } });
     }
@@ -206,14 +205,12 @@ export async function PATCH(request: Request) {
       },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        action: 'ROLE_REQUEST_APPROVED',
-        actorId: admin.id,
-        entityType: 'User',
-        entityId: target.id,
-        metadata: { email: target.email, grantedRole: requested },
-      },
+    await recordAudit({
+      action: 'ROLE_REQUEST_APPROVED',
+      actorId: admin.id,
+      entityType: 'User',
+      entityId: target.id,
+      metadata: { email: target.email, grantedRole: requested },
     });
 
     return NextResponse.json({ ok: true, user: { id: updated.id, role: updated.role, roleStatus: updated.roleStatus } });

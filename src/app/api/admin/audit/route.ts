@@ -9,7 +9,7 @@ export async function GET() {
   try {
     await requireRole('ADMIN');
     const logs = await prisma.auditLog.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { seq: 'desc' },
       take: 300,
       include: {
         actor: { select: { name: true, email: true, role: true } },
@@ -26,6 +26,9 @@ export async function GET() {
       issuePublicId: log.issue?.publicId ?? null,
       metadata: log.metadata,
       createdAt: log.createdAt.toISOString(),
+      seq: log.seq,
+      hash: log.hash,
+      prevHash: log.prevHash,
     }));
     return NextResponse.json({ logs: items, total: items.length });
   } catch (error) {

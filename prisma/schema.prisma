@@ -504,11 +504,23 @@ model AuditLog {
   metadata   Json?
   ipAddress  String?
 
+  // Phase 18 — append-only tamper-evident hash chain (Audit/Trust Ledger).
+  // `seq` is the monotonic chain position, `prevHash` links to the previous
+  // record's `hash` (null only for the genesis record), and `hash` is the
+  // SHA-256 fingerprint of this record's canonical payload chained onto
+  // `prevHash`. A unique `prevHash` means two records can never claim the same
+  // predecessor — a concurrent fork is rejected instead of silently accepted.
+  seq      Int
+  prevHash String?
+  hash     String
+
   actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
+  @@unique([seq])
+  @@unique([prevHash])
   @@index([actorId])
   @@index([issueId])
   @@index([action])

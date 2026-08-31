@@ -215,4 +215,7 @@ export interface AuditLogItem {
   issuePublicId: string | null;
   metadata: unknown | null;
   createdAt: string;
+  seq?: number;
+  hash?: string | null;
+  prevHash?: string | null;
 }

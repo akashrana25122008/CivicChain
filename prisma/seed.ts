@@ -12,6 +12,7 @@
 import 'dotenv/config';
 import { PrismaClient as Client } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { recordAudit } from '../src/lib/server/audit';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -241,42 +242,39 @@ async function main() {
       }
 
       const flow = statusFlow[demo.status] ?? [];
-      await tx.auditLog.create({
-        data: {
-          actorId: users[demo.reporter].id,
-          issueId: issue.id,
-          action: 'REPORT_CREATED',
-          entityType: 'Issue',
-          entityId: issue.id,
-          metadata: { publicId, demo: true },
-          createdAt,
-        },
+      await recordAudit({
+        tx,
+        actorId: users[demo.reporter].id,
+        issueId: issue.id,
+        action: 'REPORT_CREATED',
+        entityType: 'Issue',
+        entityId: issue.id,
+        metadata: { publicId, demo: true },
+        createdAt,
       });
       for (const step of flow) {
         const nextStep = flow[flow.indexOf(step) + 1] ?? demo.status;
-        await tx.auditLog.create({
-          data: {
-            actorId: users.authority.id,
-            issueId: issue.id,
-            action: 'STATUS_CHANGED',
-            entityType: 'Issue',
-            entityId: issue.id,
-            metadata: { from: step, to: nextStep, demo: true },
-            createdAt: new Date(createdAt.getTime() + (flow.indexOf(step) + 1) * dayMs),
-          },
+        await recordAudit({
+          tx,
+          actorId: users.authority.id,
+          issueId: issue.id,
+          action: 'STATUS_CHANGED',
+          entityType: 'Issue',
+          entityId: issue.id,
+          metadata: { from: step, to: nextStep, demo: true },
+          createdAt: new Date(createdAt.getTime() + (flow.indexOf(step) + 1) * dayMs),
         });
       }
       if (flow.includes('VERIFIED') && authority) {
-        await tx.auditLog.create({
-          data: {
-            actorId: users.authority.id,
-            issueId: issue.id,
-            action: 'AUTHORITY_ASSIGNED',
-            entityType: 'Issue',
-            entityId: issue.id,
-            metadata: { department: authority, demo: true },
-            createdAt: new Date(createdAt.getTime() + 2 * dayMs),
-          },
+        await recordAudit({
+          tx,
+          actorId: users.authority.id,
+          issueId: issue.id,
+          action: 'AUTHORITY_ASSIGNED',
+          entityType: 'Issue',
+          entityId: issue.id,
+          metadata: { department: authority, demo: true },
+          createdAt: new Date(createdAt.getTime() + 2 * dayMs),
         });
       }
 
@@ -339,15 +337,13 @@ async function main() {
           note: 'DEMO — Photo matches the reported pothole location.',
         },
       });
-      await prisma.auditLog.create({
-        data: {
-          actorId: users.authority.id,
-          issueId: cc1090Evidence.issueId,
-          action: 'VERIFICATION_CREATED',
-          entityType: 'Evidence',
-          entityId: cc1090Evidence.id,
-          metadata: { status: 'VERIFIED', demo: true },
-        },
+      await recordAudit({
+        actorId: users.authority.id,
+        issueId: cc1090Evidence.issueId,
+        action: 'VERIFICATION_CREATED',
+        entityType: 'Evidence',
+        entityId: cc1090Evidence.id,
+        metadata: { status: 'VERIFIED', demo: true },
       });
     }
   }
@@ -365,15 +361,13 @@ async function main() {
           note: 'DEMO — Seeded pending verification for the development queue.',
         },
       });
-      await prisma.auditLog.create({
-        data: {
-          actorId: users.authority.id,
-          issueId: cc1092Evidence.issueId,
-          action: 'VERIFICATION_CREATED',
-          entityType: 'Evidence',
-          entityId: cc1092Evidence.id,
-          metadata: { status: 'PENDING', demo: true },
-        },
+      await recordAudit({
+        actorId: users.authority.id,
+        issueId: cc1092Evidence.issueId,
+        action: 'VERIFICATION_CREATED',
+        entityType: 'Evidence',
+        entityId: cc1092Evidence.id,
+        metadata: { status: 'PENDING', demo: true },
       });
     }
   }
@@ -392,15 +386,13 @@ async function main() {
           reason: 'DEMO — Repeated overflow despite a broken repair promise.',
         },
       });
-      await prisma.auditLog.create({
-        data: {
-          actorId: users.ravi.id,
-          issueId: cc1093.id,
-          action: 'ESCALATION_CREATED',
-          entityType: 'Escalation',
-          entityId: cc1093.id,
-          metadata: { level: 1, demo: true },
-        },
+      await recordAudit({
+        actorId: users.ravi.id,
+        issueId: cc1093.id,
+        action: 'ESCALATION_CREATED',
+        entityType: 'Escalation',
+        entityId: cc1093.id,
+        metadata: { level: 1, demo: true },
       });
     }
   }
