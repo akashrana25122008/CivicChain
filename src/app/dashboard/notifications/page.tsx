@@ -17,6 +17,7 @@ interface NotificationsResponse {
     read: boolean;
     issueId: string | null;
     issuePublicId: string | null;
+    link: string | null;
     createdAt: string;
     timeLabel: string;
   }>;
@@ -54,15 +55,14 @@ export default function NotificationsPage() {
 
   const markAllRead = useCallback(async () => {
     if (!data) return;
-    const unread = data.notifications.filter((n) => !n.read);
-    await Promise.all(
-      unread.map((n) => fetch(`/api/notifications/${n.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ read: true }),
-      })),
-    );
-    await mutate();
+    const optimistic = {
+      ...data,
+      notifications: data.notifications.map((n) => ({ ...n, read: true })),
+      unreadCount: 0,
+    };
+    await mutate(optimistic, false);
+    const res = await fetch(`/api/notifications/read-all`, { method: 'POST' });
+    if (!res.ok) await mutate();
   }, [data, mutate]);
 
   const notifications = data?.notifications ?? [];
@@ -124,13 +124,14 @@ export default function NotificationsPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
-                      {n.issuePublicId && (
+                      {(n.link || n.issuePublicId) && (
                         <Link
-                          href={n.issueId ? `/dashboard/issues/${n.issueId}` : '#'}
+                          href={n.link ?? (n.issueId ? `/dashboard/issues/${n.issueId}` : '#')}
                           className="text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 inline-flex items-center gap-1"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {n.issuePublicId} <ArrowRight className="w-3 h-3" />
+                          {n.issuePublicId ? `${n.issuePublicId} ` : 'View'}
+                          <ArrowRight className="w-3 h-3" />
                         </Link>
                       )}
                       {!n.read && <span className="w-2 h-2 rounded-full bg-brand-500 flex-shrink-0" aria-label="Unread" />}

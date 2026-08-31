@@ -26,6 +26,7 @@ export async function GET() {
       read: n.read,
       issueId: n.issueId,
       issuePublicId: n.issue?.publicId ?? null,
+      link: n.link,
       createdAt: n.createdAt.toISOString(),
       timeLabel: formatRelativeTime(n.createdAt),
     }));

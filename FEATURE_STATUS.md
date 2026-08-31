@@ -44,11 +44,58 @@ Verification: `tsc --noEmit` clean; eslint clean; `next build` exit 0 (58
 pages incl. `/api/map/public`); 62/62 unit tests pass; live Postgres smoke test
 (27 located issues, real status distribution + centroid).
 
+## Phase 13 Update (this revision — Event-Driven, Multi-Channel Notifications)
+
+The notification system is now a single, event-driven, channel-aware dispatcher
+rather than a bare in-app insert. In-app delivery is fully real and DB-backed;
+email is real (delivered when SMTP is configured, and honestly non-delivered
+otherwise); push is recorded but honestly flagged UNSUPPORTED (no provider).
+
+- **In-app notifications** — PARTIAL → **WORKING**. `notifyUser()` is the one
+  entry point: it resolves the recipient's persisted preferences, and for each
+  enabled requested channel either persists the in-app `Notification` row
+  (`IN_APP`), attempts email delivery (`EMAIL`), or records an honest
+  UNSUPPORTED push result (`PUSH`). All existing event sources (status
+  transitions, resolution, escalation engine, SLA/promise formation, evidence,
+  department actions, community votes) already route through it, so they gained
+  multi-channel behaviour without changing their call sites.
+- **Notification preferences** — MISSING → **WORKING**. New
+  `NotificationPreference` model (unique per `(userId, channel)`, default-on)
+  with `GET/PUT /api/notifications/preferences`. The Settings → Notifications
+  card is now a **real, persisted** panel (in-app / email / push toggles) —
+  previously it was static mock toggles. Prefs are always keyed off the session
+  user, never the browser.
+- **Idempotency** — new `Notification.dedupeKey` (unique) lets a retried event
+  or race never double-notify. Status-change and community-vote notifications
+  carry stable keys; re-casts/votes return the existing record.
+- **Rich, actionable links** — new `Notification.link` deep-link column
+  (e.g. `/dashboard/issues/:id`), surfaced in both the feed and the new header
+  bell dropdown.
+- **Email delivery** — MISSING → **PARTIAL/WORKING**. `src/lib/email/notification.ts`
+  reuses the honest SMTP policy: real nodemailer delivery when `EMAIL_SERVER` is
+  set; a dev-preview console log without it; and a loud failure in production so
+  delivery is never faked.
+- **Header bell dropdown** — new `NotificationBell` component (recent
+  notifications, unread badge, one-click mark-all-read, "view all" footer)
+  replaces the previous plain bell link. The full feed now marks-all-read via a
+  single atomic `POST /api/notifications/read-all` instead of an N-request
+  client fan-out.
+- **Community event wiring** — casting a vote now notifies the issue's reporter
+  (and the assigned authority) via the dispatcher, so citizens and departments
+  are both kept in the loop on social signals.
+
+Verification: `tsc --noEmit` clean; eslint clean for all new/changed files (only
+pre-existing lint warnings/errors remain in untouched baseline files); `next build`
+exit 0 (both new routes `/api/notifications/{read-all,preferences}` included);
+67/67 unit tests pass; live Postgres smoke test of `notifyUser` (persist,
+`dedupeKey` idempotency, IN_APP preference gating, email channel honest
+non-delivery, cleanup).
+
 ## Summary
 
 | WORKING | PARTIAL | MOCK | MISSING | UNKNOWN |
 | ------: | ------: | ---: | ------: | ------: |
-|      21 |      10 |    9 |       7 |       0 |
+|      21 |      11 |    9 |       6 |       0 |
 
 ## Phase 3/4 Update (this revision — Real AI Analysis + Duplicate Detection + Priority Engine)
 
@@ -339,7 +386,7 @@ community votes, and civic karma are now real DB-backed logic — updated above.
 | Heatmaps (density/severity/priority/resolved)   | PARTIAL  | **Real** density heatmap layer (Maplibre `heatmap`) over `/api/map` located issues with a Markers↔Heatmap toggle on `/map` | `src/components/map/CivicMapInner.tsx` (GeoJSON heatmap source/layer); `src/components/map/CivicMap.tsx` (view toggle) | Add severity/priority-weighted + H3 tile layers |
 | Civic karma                                    | PARTIAL  | **Real** `KarmaEvent` ledger + idempotent `applyKarmaEvent()` + `calculateKarma()` (`src/lib/community/karma.ts`); no UI yet                      | `src/lib/community/karma.ts`                                    | Add karma UI + touchpoints that award events                    |
 | Live real-time tracking / websockets            | MISSING  | (`socket.io-client` installed, unused)                                  | —                                                                                     | Event stream + socket server                                   |
-| Notifications (in-app/email/push)               | MISSING  | —                                                                        | —                                                                                     | Notifier service                                                |
+| Notifications (in-app/email/push)               | PARTIAL  | **Real** in-app feed + unread badge + mark-read/read-all; multi-channel dispatcher (`notifyUser`) with per-channel preferences + idempotent `dedupeKey` + nodemailer email delivery (EMAIL_SERVER). Push honestly UNSUPPORTED (no provider)   | `src/app/api/notifications/{route,[id],read-all,preferences}`; `src/lib/server/notify.ts`; `src/lib/email/notification.ts`; `src/components/notifications/*`; Settings → Notifications | Add push provider + SMS channel                    |
 | Blockchain / tamper-evident ledger              | MISSING  | —                                                                        | —                                                                                     | Event hash chain + optional anchoring                           |
 | Audit trail                                    | PARTIAL  | **Real** `Audit` + `IssueNote` event log for persisted issues (`IssueDetailView`) | `src/lib/issues/query.ts`; schema `Audit`/`IssueNote`                                | Enable on remaining UI surfaces + blocking/action history        |
 | Background jobs / workers                       | MISSING  | (pipeline runs via next/server `after()` as non-primary fallback)        | `src/lib/server/intelligence/`                                                       | Queue (BullMQ/Redis) + CI/verification workers                  |

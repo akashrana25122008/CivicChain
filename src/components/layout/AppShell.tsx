@@ -6,10 +6,11 @@ import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import useSWR from 'swr';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Bell, ChevronDown, LogOut, Menu, X } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import {
   ROLE_LABELS,
   navForRole,
@@ -331,14 +332,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <div className="flex items-center gap-1.5 md:gap-2">
               {/* Notifications */}
-              <Link
-                href="/dashboard/notifications"
-                className="relative p-2 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                aria-label={meta.title === 'Notifications' ? 'Notifications' : 'View notifications'}
-              >
-                <Bell className="w-5 h-5" aria-hidden="true" />
-                <NotificationDot pathname={pathname} />
-              </Link>
+              <NotificationBell />
 
               {/* Profile / role indicator */}
               <div className="relative" ref={profileRef}>
@@ -414,16 +408,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
-  );
-}
-
-function NotificationDot({ pathname }: { pathname: string }) {
-  const unread = useUnreadCount();
-  if (pathname === '/dashboard/notifications') return null;
-  if (unread <= 0) return null;
-  return (
-    <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand-600 text-white text-[10px] font-semibold flex items-center justify-center">
-      {unread > 9 ? '9+' : unread}
-    </span>
   );
 }

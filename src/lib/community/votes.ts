@@ -9,6 +9,7 @@
  */
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/server/audit';
+import { createNotification } from '@/lib/server/notify';
 import { ApiError, badRequest, notFound } from '@/lib/server/api';
 import { applyKarmaEvent } from '@/lib/community/karma';
 import { VoteType, type User } from '../../../generated/prisma/client';
@@ -40,7 +41,10 @@ export async function castVote(input: {
   const { issueId, actor, type } = input;
   if (!isVoteType(type)) throw badRequest('A valid vote type is required.');
 
-  const issue = await prisma.issue.findUnique({ where: { id: issueId }, select: { id: true } });
+  const issue = await prisma.issue.findUnique({
+    where: { id: issueId },
+    select: { id: true, publicId: true, reporterId: true, authorityId: true },
+  });
   if (!issue) throw notFound('Issue');
 
   // Prevent a user voting on their own report (avoids self-confirmation bias).
@@ -71,6 +75,47 @@ export async function castVote(input: {
       await applyKarmaEvent({ userId: actor.id, type: 'HELPFUL_CONFIRMATION', issueId }).catch(
         () => undefined,
       );
+    }
+    // Phase 13 — a fresh community vote is a citizen signal: notify the issue's
+    // reporter (who is never the voter — self-voting is blocked above) and the
+    // assigned authority. Best-effort + dedupeKey so a retried event can never
+    // double-notify. A re-cast returns the existing vote above (created: false),
+    // so this only ever runs once per real vote.
+    if (vote.type === 'CONFIRM' || vote.type === 'SUPPORT' || vote.type === 'DISPUTE') {
+      const verb =
+        vote.type === 'CONFIRM'
+          ? 'confirmed'
+          : vote.type === 'SUPPORT'
+            ? 'supported'
+            : 'disputed';
+      if (issue.reporterId !== actor.id) {
+        await createNotification({
+          userId: issue.reporterId,
+          issueId,
+          type: 'GENERAL',
+          title: `A neighbour ${verb} report ${issue.publicId}`,
+          message: `A community member ${verb} your report.`,
+          link: `/dashboard/issues/${issueId}`,
+          dedupeKey: `VOTE:${vote.id}:reporter=${issue.reporterId}`,
+        }).catch(() => undefined);
+      }
+    }
+    if (issue.authorityId) {
+      const authority = await prisma.authority.findUnique({
+        where: { id: issue.authorityId },
+        select: { userId: true },
+      });
+      if (authority?.userId) {
+        await createNotification({
+          userId: authority.userId,
+          issueId,
+          type: 'GENERAL',
+          title: `Community votes on ${issue.publicId}`,
+          message: `A ${vote.type.toLowerCase()} vote was cast on a report assigned to you.`,
+          link: `/department/issues/${issueId}`,
+          dedupeKey: `VOTE:${vote.id}:authority=${authority.userId}`,
+        }).catch(() => undefined);
+      }
     }
     return { id: vote.id, issueId, type, created: true };
   } catch (err) {

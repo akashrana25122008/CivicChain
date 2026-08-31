@@ -185,6 +185,8 @@ export interface NotificationItem {
   read: boolean;
   issueId: string | null;
   issuePublicId: string | null;
+  /** Deep-link the notification resolves to, if any (Phase 13). */
+  link: string | null;
   createdAt: string;
   timeLabel: string;
 }

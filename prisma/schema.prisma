@@ -117,6 +117,13 @@ enum NotificationType {
   GENERAL
 }
 
+/** Delivery channel a Notification can be routed through (Phase 13). */
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3 — Real AI intelligence
 // ---------------------------------------------------------------------------
@@ -251,6 +258,7 @@ model User {
   escalations    Escalation[]    @relation("EscalationInitiator")
   authorities    Authority[]     @relation("AuthorityUser")
   notifications  Notification[]
+  notificationPreferences NotificationPreference[]
   auditLogs      AuditLog[]      @relation("AuditActor")
   votes          Vote[]
   karmaEvents    KarmaEvent[]
@@ -515,6 +523,22 @@ model Notification {
   title     String
   message   String?
   read      Boolean          @default(false)
+  /**
+   * Deep-link the notification resolves to (e.g. /dashboard/issues/:id, or
+   * /dashboard/settings when the action is preference-related). Null → no action.
+   */
+  link      String?
+  /**
+   * Idempotency guard (Phase 13). When provided, retried/duplicate events can
+   * never persist a second notification for the same logical occurrence. e.g.
+   * "STATUS_CHANGED:issue=<id>:to=RESOLVED".
+   */
+  dedupeKey String?          @unique
+  /**
+   * The channel that produced this persisted row. IN_APP rows are always
+   * persisted here; EMAIL/PUSH rows are the delivery record for those channels.
+   */
+  channel   NotificationChannel @default(IN_APP)
 
   user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
   issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
@@ -522,7 +546,28 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+  @@index([userId, read, createdAt])
   @@index([issueId])
+}
+
+/**
+ * Per-user opt-in/opt-out for each delivery channel (Phase 13). A user with no
+ * row defaults to subscribing to a channel. Each (userId, channel) is unique so
+ * a user holds at most one preference per channel. Lookup is never trusted from
+ * the browser — it is keyed off the authoritative session user id.
+ */
+model NotificationPreference {
+  id        String               @id @default(cuid())
+  userId    String
+  channel   NotificationChannel
+  enabled   Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel])
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------

@@ -207,6 +207,8 @@ export async function transitionIssue(input: TransitionIssueInput): Promise<Tran
         type: 'STATUS_CHANGED',
         title: `Report ${issue.publicId} is now ${describeStatus(nextStatus)}`,
         message: `Status changed from ${describeStatus(issue.status)} to ${describeStatus(nextStatus)}.`,
+        link: `/dashboard/issues/${issue.id}`,
+        dedupeKey: `STATUS_CHANGED:${issue.id}:${nextStatus}`,
       });
     }
 

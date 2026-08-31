@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Input';
+import { NotificationPreferencesPanel } from '@/components/notifications/NotificationPreferencesPanel';
 import { User, Bell, Shield, Palette } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -49,22 +50,11 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {[
-              { label: 'Issue status updates', description: 'Get notified when your reported issues change status' },
-              { label: 'Promise deadline alerts', description: 'Receive alerts when promises are approaching deadline' },
-              { label: 'Escalation notifications', description: 'Get notified when issues are escalated' },
-              { label: 'Community feedback', description: 'Receive updates on community verification activity' },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
-                <div>
-                  <p className="text-sm font-medium text-neutral-900 dark:text-white">{item.label}</p>
-                  <p className="text-xs text-neutral-500">{item.description}</p>
-                </div>
-                <div className="w-10 h-6 rounded-full bg-brand-500 relative cursor-pointer">
-                  <div className="absolute right-1 top-1 w-4 h-4 rounded-full bg-white shadow" />
-                </div>
-              </div>
-            ))}
+            <NotificationPreferencesPanel />
+            <p className="text-[11px] text-neutral-400">
+              Changes are saved immediately and apply to every notification you
+              receive, on all channels.
+            </p>
           </CardContent>
         </Card>
 
