@@ -130,11 +130,52 @@ and changed files; `next build` exit 0 (new routes
 10 new); live Postgres smoke test of `UserPreferences` upsert→update→read and
 missing-row default behaviour.
 
+## Phase 15 Update (this revision — Address + Geocoding)
+
+Address handling is now a real service instead of a single reverse-geocode hook.
+A provider-agnostic geocoding layer supports forward search, reverse geocoding,
+and deterministic ward/zone detection that never depends on a hardcoded lookup
+table — and it degrades gracefully when no external provider is configured.
+
+- **Geocoding service abstraction** — `src/lib/server/geocode.ts` grew into a
+  proper service: `searchGeocode` (forward), `reverseGeocodeStructured` (reverse
+  → label + ward), `humanLocationLabel` (normalize persisted location), plus pure
+  `extractWardFromText` / `gridCellKey`. The provider can be any Nominatim-style
+  JSON endpoint via `GEOCODER_URL`/`GEOCODER_API_KEY`; when absent/unreachable
+  the service returns self-contained fallbacks (label-only candidates for search,
+  `null` for reverse) and **never throws** — an outage can never fail a report.
+- **Geocoding APIs** — new `GET /api/geocode/search` (debounced-autocomplete
+  endpoint; authenticated; bounded `limit`; optional lat/lon anchor) and
+  `GET /api/geocode/reverse` (pin → address + ward with `available` flag). Both
+  return a consistent `{ label, latitude, longitude, ward, located }` shape.
+- **Report location picker** — the report form's text-only "Location" input was
+  replaced by a `LocationPicker` component: address autocomplete with debounce,
+  a clickable MapLibre map to drop a pin, "Use My Location", live reverse
+  geocoding on pin, ward chip display, and coordinates readout. The picker feeds
+  `location` + `latitude`/`longitude` into the existing validated report schema.
+- **Ward/zone detection (data-derived, no hardcoded mappings)** — `extractWardFromText`
+  recognizes `Ward N`, `Zone N`, and Devanagari ward tokens via a tokenizer
+  (not a lookup table); `gridCellKey`/risk-area grouping (Phase 11) now reuse the
+  shared extractor instead of a duplicated regex. A detected ward is folded into
+  the persisted location label without overwriting the citizen's own words.
+- **Authority routing integration (Phase 5)** — report routing already assigns
+  the category-mapped department; it now also narrows to any authority whose
+  `jurisdiction` matches the detected ward (registry-driven, still data-derived).
+- **Graceful provider state** — with no `GEOCODER_URL` configured locally, search
+  returns label-only candidates (zero coords = unlocated) and reverse returns
+  `null` with `available:false`; the picker stays fully usable offline.
+
+Verification: `tsc --noEmit` clean; eslint clean for all new/changed files;
+`next build` exit 0 (new routes `/api/geocode/{search,reverse}` included);
+82/82 unit tests pass (77 baseline + 5 new geocode tests covering ward token
+extraction, grid keys, and location-label normalization); live smoke test of the
+service fallback paths (search label-only, reverse with/without fallback).
+
 ## Summary
 
 | WORKING | PARTIAL | MOCK | MISSING | UNKNOWN |
 | ------: | ------: | ---: | ------: | ------: |
-|      22 |      11 |    8 |       6 |       0 |
+|      23 |      12 |    7 |       6 |       0 |
 
 ## Phase 3/4 Update (this revision — Real AI Analysis + Duplicate Detection + Priority Engine)
 
@@ -321,7 +362,9 @@ notification. Status overrides applied on top of the Phase 1 table:
 - **Geocoding / coordinate capture** — PARTIAL → **PARTIAL** (browser GPS taps a
   real `navigator.geolocation` fix + ±m accuracy, stored with the report; optional
   server-side reverse geocoder via `GEOCODER_URL` used only for the location label
-  and never needed for submission; address search still not built).
+  and never needed for submission; address search still not built). *(See the
+  Phase 15 update below — the geocoding service, search/reverse APIs, location
+  picker and ward detection are now real.)*
 - **Duplicate detection / report merging** — MOCK → **PARTIAL** (live: same
   reporter + category + title within 60 s returns `409 DUPLICATE_REPORT`, plus a
   synchronous client lock. Cross-report similarity clustering remains MOCK).
@@ -420,7 +463,7 @@ community votes, and civic karma are now real DB-backed logic — updated above.
 | Report submission persistence                   | WORKING  | **Real** multipart/file/custom evidence → `POST /api/issues` → Postgres | `src/app/api/issues/route.ts` + `[id]`; `src/lib/issues/http.ts`, `query.ts`        | Preserve canonical `/api/issues` path                          |
 | Citizen authentication / sessions               | WORKING  | **Real** NextAuth (JWT + DB user) + middleware                           | `src/app/api/auth/[...nextauth]`; `src/proxy.ts`                                     | Gated role picker on signup (pending sign-in rate-limit fix)    |
 | Image / video upload & storage                  | MISSING  | Drag-drop zone only, no handler                                          | `src/app/report/page.tsx:116-129`                                                    | Multipart upload API + object storage                           |
-| Geocoding / coordinate capture                  | MISSING  | Free-text location only; coords hardcoded                               | `src/app/report/page.tsx:107`                                                        | Geocoder on intake + reverse geocode for maps                   |
+| Geocoding / coordinate capture                  | PARTIAL  | Geocoding service + search/reverse APIs + location picker + ward detection (`src/lib/server/geocode.ts`, `src/components/report/LocationPicker.tsx`)                        | `src/components/report/LocationPicker.tsx`                                             | Provider-agnostic; falls back to label-only when `GEOCODER_URL` unset |
 | Jurisdiction detection                          | MISSING  | —                                                                        | —                                                                                     | Ward/zone → department lookup                                   |
 | Heatmaps (density/severity/priority/resolved)   | PARTIAL  | **Real** density heatmap layer (Maplibre `heatmap`) over `/api/map` located issues with a Markers↔Heatmap toggle on `/map` | `src/components/map/CivicMapInner.tsx` (GeoJSON heatmap source/layer); `src/components/map/CivicMap.tsx` (view toggle) | Add severity/priority-weighted + H3 tile layers |
 | Civic karma                                    | PARTIAL  | **Real** `KarmaEvent` ledger + idempotent `applyKarmaEvent()` + `calculateKarma()` (`src/lib/community/karma.ts`); no UI yet                      | `src/lib/community/karma.ts`                                    | Add karma UI + touchpoints that award events                    |

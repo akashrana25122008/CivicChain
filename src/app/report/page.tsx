@@ -8,26 +8,19 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { CATEGORY_SELECT_OPTIONS, PRIORITY_LEVEL_LABELS } from '@/lib/issues/mapping';
 import { cn } from '@/lib/utils';
 import type { IssueDetail, DuplicateVerdictItem } from '@/lib/issues/types';
-import {
-  Upload,
-  MapPin,
-  CheckCircle2,
-  ArrowRight,
-  FileText,
-  Loader2,
-  X,
-  Link2,
-  LocateFixed,
-  Crosshair,
-  Brain,
-  GitMerge,
-  ShieldAlert,
-  AlertTriangle,
-} from 'lucide-react';
+import { Upload, MapPin, CheckCircle2, ArrowRight, FileText, Loader2, X, Link2, Brain, GitMerge, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { LocationPicker, type PickedLocation } from '@/components/report/LocationPicker';
 
 type Step = 'form' | 'submitting' | 'result';
 
-type GpsState = { phase: 'idle' | 'locating' | 'done' | 'error'; error?: string };
+const EMPTY_PICKED: PickedLocation = {
+  location: '',
+  latitude: null,
+  longitude: null,
+  ward: null,
+  hasPin: false,
+  geocoderAvailable: false,
+};
 
 export default function ReportPage() {
   const [step, setStep] = useState<Step>('form');
@@ -42,52 +35,23 @@ export default function ReportPage() {
     contact: '',
     evidenceUrl: '',
   });
+  const [picked, setPicked] = useState<PickedLocation>(EMPTY_PICKED);
   const [files, setFiles] = useState<File[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [issue, setIssue] = useState<IssueDetail | null>(null);
   const [duplicate, setDuplicate] = useState<DuplicateVerdictItem>(null);
-  const [gps, setGps] = useState<GpsState>({ phase: 'idle' });
+  const [error, setError] = useState<string | null>(null);
   // Synchronous double-submit guard: the windowed server check is the source
   // of truth, but we must never issue two identical requests from one click.
   const submittingRef = useRef(false);
 
   const resetForm = () => {
     setFormData({ title: '', category: '', location: '', latitude: '', longitude: '', accuracy: '', description: '', contact: '', evidenceUrl: '' });
+    setPicked(EMPTY_PICKED);
     setFiles([]);
     setError(null);
     setIssue(null);
     setDuplicate(null);
-    setGps({ phase: 'idle' });
     setStep('form');
-  };
-
-  const handleUseMyLocation = () => {
-    if (!('geolocation' in navigator)) {
-      setGps({ phase: 'error', error: 'Geolocation is not available in this browser.' });
-      return;
-    }
-    setGps({ phase: 'locating' });
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setFormData((prev) => ({
-          ...prev,
-          latitude: String(position.coords.latitude),
-          longitude: String(position.coords.longitude),
-          accuracy: String(Math.round(position.coords.accuracy)),
-        }));
-        setGps({ phase: 'done' });
-      },
-      (err) => {
-        setGps({
-          phase: 'error',
-          error:
-            err.code === err.PERMISSION_DENIED
-              ? 'Location permission was denied — you can still enter coordinates or an address manually.'
-              : 'Could not read your location. Please enter coordinates manually.',
-        });
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-    );
   };
 
   const handleFiles = (list: FileList | null) => {
@@ -106,9 +70,9 @@ export default function ReportPage() {
     const body = new FormData();
     body.set('title', formData.title.trim());
     body.set('category', formData.category);
-    if (formData.location.trim()) body.set('location', formData.location.trim());
-    if (formData.latitude.trim()) body.set('latitude', formData.latitude.trim());
-    if (formData.longitude.trim()) body.set('longitude', formData.longitude.trim());
+    if (picked.location.trim()) body.set('location', picked.location.trim());
+    if (picked.latitude != null) body.set('latitude', String(picked.latitude));
+    if (picked.longitude != null) body.set('longitude', String(picked.longitude));
     if (formData.accuracy.trim()) body.set('accuracy', formData.accuracy.trim());
     if (formData.description.trim()) body.set('description', formData.description.trim());
     if (formData.contact.trim()) body.set('contact', formData.contact.trim());
@@ -217,63 +181,18 @@ export default function ReportPage() {
                     required
                   />
 
-                  <Input
-                    label="Location"
-                    placeholder="Address, landmark, or GPS coordinates"
-                    leftIcon={<MapPin className="w-4 h-4" />}
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  />
-
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                        Location Coordinates
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleUseMyLocation}
-                        disabled={gps.phase === 'locating'}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 disabled:opacity-60"
-                      >
-                        {gps.phase === 'locating' ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <LocateFixed className="w-3.5 h-3.5" />
-                        )}
-                        {gps.phase === 'locating' ? 'Reading your location…' : 'Use My Location'}
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Input
-                        label="Latitude (optional)"
-                        type="number"
-                        step="any"
-                        placeholder="e.g. 21.1702"
-                        value={formData.latitude}
-                        onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                      />
-                      <Input
-                        label="Longitude (optional)"
-                        type="number"
-                        step="any"
-                        placeholder="e.g. 72.8311"
-                        value={formData.longitude}
-                        onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                      />
-                    </div>
-                    {gps.phase === 'done' && (
-                      <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                        <Crosshair className="w-3.5 h-3.5" />
-                        Location captured by GPS
-                        {formData.accuracy ? ` ±${formData.accuracy} m` : ''}
-                      </p>
-                    )}
-                    {gps.phase === 'error' && (
-                      <p className="mt-2 text-xs text-neutral-500">{gps.error}</p>
-                    )}
+                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+                      Location
+                    </label>
+                    <LocationPicker
+                      value={picked}
+                      onChange={(next) => {
+                        setPicked(next);
+                      }}
+                    />
                     <p className="mt-1 text-xs text-neutral-500">
-                      For report accuracy the device&apos;s GPS fix (lat, lng, and ± meters error) is stored with the report when captured.
+                      Search for an address, click the map, or use your device&apos;s location. When available, the address is resolved and the ward detected server-side.
                     </p>
                   </div>
 

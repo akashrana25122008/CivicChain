@@ -15,6 +15,7 @@
 
 import { prisma } from '@/lib/db';
 import { IssueCategory } from '../../../generated/prisma/client';
+import { extractWardFromText, gridCellKey } from '@/lib/server/geocode';
 import { computeAreaRisk, severityToScore, getRiskConfig } from './scoring';
 import { calculateTrend } from './trend';
 import type {
@@ -24,30 +25,6 @@ import type {
   TrendResult,
   RiskQueryParams,
 } from './types';
-
-// ---------------------------------------------------------------------------
-// Area grouping constants
-// ---------------------------------------------------------------------------
-
-/** Grid cell size in degrees (~1km at equator, slightly less at higher latitudes). */
-const GRID_SIZE = 0.01;
-
-/** Regex to extract "Ward X" patterns from location text. */
-const WARD_REGEX = /ward\s*(\d+[a-z]*)/i;
-
-/** Fallback area name when no ward is detected. */
-function gridCellKey(lat: number, lng: number): string {
-  const gridLat = Math.round(lat / GRID_SIZE) * GRID_SIZE;
-  const gridLng = Math.round(lng / GRID_SIZE) * GRID_SIZE;
-  return `area_${gridLat.toFixed(3)}_${gridLng.toFixed(3)}`;
-}
-
-function extractWardName(location: string | null): string | null {
-  if (!location) return null;
-  const match = location.match(WARD_REGEX);
-  if (match) return `Ward ${match[1]}`;
-  return null;
-}
 
 // ---------------------------------------------------------------------------
 // Raw issue shape we query from DB
@@ -100,7 +77,7 @@ function groupIssues(issues: RawIssue[]): GroupedArea[] {
 
   for (const issue of issues) {
     // Try ward name extraction first
-    const wardName = extractWardName(issue.location);
+    const wardName = extractWardFromText(issue.location);
     if (wardName) {
       const existing = groups.get(wardName);
       if (existing) {

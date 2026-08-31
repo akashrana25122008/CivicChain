@@ -2,7 +2,11 @@ import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/server/audit';
 import { createNotification } from '@/lib/server/notify';
 import { ApiError } from '@/lib/server/api';
-import { reverseGeocode } from '@/lib/server/geocode';
+import {
+  reverseGeocodeStructured,
+  humanLocationLabel,
+  extractWardFromText,
+} from '@/lib/server/geocode';
 import { getAuthorityDepartmentForCategory } from '@/lib/issues/mapping';
 import { hashEvidenceImages, storePriorityForIssue } from '@/lib/server/intelligence/pipeline';
 import { assignIncident } from '@/lib/server/intelligence/duplicates/cluster';
@@ -56,21 +60,49 @@ export async function createReport(input: {
     );
   }
 
+  // Reverse-geocode coordinates when the citizen only provided a pin. The
+  // structured result also yields a ward/zone that can refine authority routing.
+  const coord =
+    data.latitude != null && data.longitude != null
+      ? { latitude: data.latitude, longitude: data.longitude }
+      : null;
+  let location = data.location || null;
+  let ward: string | null = null;
+  if (coord && !location) {
+    const geo = await reverseGeocodeStructured(coord.latitude, coord.longitude);
+    if (geo) {
+      location = geo.label;
+      ward = geo.ward ?? null;
+    }
+  } else if (location) {
+    // Derive a ward token from the free-text address when present (Phase 15).
+    ward = extractWardFromText(location);
+  }
+  // Normalize the persisted location to include a detected ward when it adds
+  // value, without ever fabricating or overwriting the citizen's own words.
+  if (location) location = humanLocationLabel({ location, ward }) ?? location;
+
+  // Authority routing: category-map first, then narrow to any authority whose
+  // jurisdiction matches the detected ward (registry-driven, not hardcoded).
   let authorityId: string | null = null;
   const department = getAuthorityDepartmentForCategory(data.category);
   if (department) {
-    const authority = await prisma.authority.findFirst({
+    const base = await prisma.authority.findFirst({
       where: { department },
       select: { id: true },
     });
-    authorityId = authority?.id ?? null;
-  }
-
-  // Reverse-geocode coordinates when the citizen only provided a pin.
-  let location = data.location || null;
-  if (!location && data.latitude != null && data.longitude != null) {
-    const address = await reverseGeocode(data.latitude, data.longitude);
-    if (address) location = address;
+    authorityId = base?.id ?? null;
+    const matchedWard: string | null = ward;
+    if (matchedWard) {
+      const wardAuthority = await prisma.authority.findFirst({
+        where: {
+          department,
+          jurisdiction: { contains: matchedWard, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (wardAuthority) authorityId = wardAuthority.id;
+    }
   }
 
   const evidenceMetadata = input.evidenceFiles;
