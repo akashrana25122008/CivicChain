@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { type IssueMarker, MOCK_ISSUES } from '@/components/3d/CivicGlobe';
+import useSWR from 'swr';
 import { mapEmbedUrl } from '@/components/landing/CivicMapEmbed';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { cn } from '@/lib/utils';
@@ -17,13 +17,6 @@ const LEGEND = [
   { color: 'bg-brand-500', label: 'Under Verification' },
 ];
 
-const STATS = [
-  { label: 'ACTIVE ISSUES', value: 2481, color: 'text-amber-400' },
-  { label: 'BROKEN PROMISES', value: 214, color: 'text-red-400' },
-  { label: 'RESOLVED', value: 1294, color: 'text-emerald-400' },
-  { label: 'PREDICTED RISKS', value: 89, color: 'text-violet-400' },
-];
-
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   onTrack: { label: 'ON TRACK', cls: 'text-emerald-400 bg-emerald-900/30 border-emerald-800' },
   atRisk: { label: 'AT RISK', cls: 'text-amber-400 bg-amber-900/30 border-amber-800' },
@@ -31,6 +24,8 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   assigned: { label: 'ASSIGNED', cls: 'text-violet-400 bg-violet-900/30 border-violet-800' },
   verificationPending: { label: 'VERIFYING', cls: 'text-violet-400 bg-violet-900/30 border-violet-800' },
   resolved: { label: 'RESOLVED', cls: 'text-emerald-400 bg-emerald-900/30 border-emerald-800' },
+  active: { label: 'ACTIVE', cls: 'text-sky-400 bg-sky-900/30 border-sky-800' },
+  rejected: { label: 'REJECTED', cls: 'text-neutral-400 bg-neutral-800/50 border-neutral-700' },
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -40,29 +35,68 @@ const STATUS_COLOR: Record<string, string> = {
   assigned: 'bg-violet-400',
   verificationPending: 'bg-violet-400',
   resolved: 'bg-emerald-500',
+  active: 'bg-sky-400',
+  rejected: 'bg-neutral-400',
 };
 
-const TYPE_NAME: Record<string, string> = {
-  pothole: 'Pothole',
-  drainage: 'Drain Blockage',
-  streetlight: 'Streetlight Failure',
-  garbage: 'Garbage Accumulation',
-  infrastructure: 'Infrastructure',
-};
+const DEFAULT_CENTER = { lat: 27.4924, lng: 78.0322 };
 
-const CITY_CENTER = { lat: 19.076, lng: 72.8777 };
+interface LiveIssue {
+  id: string;
+  publicId: string;
+  title: string;
+  categoryLabel: string;
+  displayStatus: string;
+  priority: number | null;
+  latitude: number;
+  longitude: number;
+}
+
+interface PublicMapResponse {
+  located: LiveIssue[];
+  stats: {
+    total: number;
+    located: number;
+    active: number;
+    resolved: number;
+    rejected: number;
+    inProgress: number;
+  };
+  center: { lat: number; lng: number } | null;
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export function CivicIntelligenceMapSection() {
   const reduce = useReducedMotion();
-  const [selected, setSelected] = useState<IssueMarker | null>(null);
-  const [view, setView] = useState(CITY_CENTER);
+  const { data } = useSWR<PublicMapResponse>('/api/map/public', fetcher, {
+    refreshInterval: 60000,
+  });
+  const [selected, setSelected] = useState<LiveIssue | null>(null);
+  const [view, setView] = useState(DEFAULT_CENTER);
   const [zoom, setZoom] = useState(12);
 
-  const focusIssue = (issue: IssueMarker) => {
+  const located = data?.located ?? [];
+  const center = data?.center ?? DEFAULT_CENTER;
+  const stats = data?.stats;
+
+  const focusIssue = (issue: LiveIssue) => {
     setSelected(issue);
-    setView({ lat: issue.lat, lng: issue.lng });
+    setView({ lat: issue.latitude, lng: issue.longitude });
     setZoom(15);
   };
+
+  // Keep the map pinned to the (server-computed) data centroid until the user
+  // focuses a specific issue.
+  const effectiveView = selected ? view : center;
+  const effectiveZoom = selected ? zoom : 12;
+
+  const STATS = [
+    { label: 'ACTIVE ISSUES', value: stats?.active ?? 0, color: 'text-amber-400' },
+    { label: 'IN PROGRESS', value: stats?.inProgress ?? 0, color: 'text-sky-400' },
+    { label: 'RESOLVED', value: stats?.resolved ?? 0, color: 'text-emerald-400' },
+    { label: 'LOCATED REPORTS', value: stats?.located ?? 0, color: 'text-violet-400' },
+  ];
 
   return (
     <section className="py-20 md:py-32 bg-dark-bg" id="civic-map">
@@ -90,9 +124,9 @@ export function CivicIntelligenceMapSection() {
           <div className="relative rounded-2xl overflow-hidden border border-dark-border bg-dark-bg-card">
             <div className="aspect-[16/9] md:aspect-[21/9]">
               <iframe
-                key={`${view.lat},${view.lng},${zoom}`}
+                key={`${effectiveView.lat},${effectiveView.lng},${effectiveZoom}`}
                 title="Live Google Map of civic issues"
-                src={mapEmbedUrl({ lat: view.lat, lng: view.lng }, zoom)}
+                src={mapEmbedUrl({ lat: effectiveView.lat, lng: effectiveView.lng }, effectiveZoom)}
                 className="h-full w-full border-0"
                 loading="eager"
                 allowFullScreen
@@ -108,35 +142,42 @@ export function CivicIntelligenceMapSection() {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 </div>
                 <div className="max-h-[300px] overflow-y-auto divide-y divide-white/5">
-                  {MOCK_ISSUES.map((issue) => {
-                    const active = selected?.id === issue.id;
-                    return (
-                      <button
-                        key={issue.id}
-                        onClick={() => focusIssue(issue)}
-                        className={cn(
-                          'w-full flex items-start gap-2.5 px-3 py-2.5 text-left transition-colors',
-                          active ? 'bg-brand-500/10' : 'hover:bg-white/5'
-                        )}
-                      >
-                        <span
+                  {located.length === 0 ? (
+                    <p className="px-3 py-4 text-xs text-white/50">
+                      No located reports yet. As citizens submit reports with
+                      coordinates, they will appear here.
+                    </p>
+                  ) : (
+                    located.map((issue) => {
+                      const active = selected?.id === issue.id;
+                      return (
+                        <button
+                          key={issue.id}
+                          onClick={() => focusIssue(issue)}
                           className={cn(
-                            'mt-1.5 h-2 w-2 shrink-0 rounded-full',
-                            STATUS_COLOR[issue.status] || 'bg-white/40',
-                            active && 'ring-2 ring-brand-400/50'
+                            'w-full flex items-start gap-2.5 px-3 py-2.5 text-left transition-colors',
+                            active ? 'bg-brand-500/10' : 'hover:bg-white/5'
                           )}
-                        />
-                        <span className="min-w-0">
-                          <span className={cn('block text-xs font-semibold', active ? 'text-brand-300' : 'text-white')}>
-                            {issue.id} · {TYPE_NAME[issue.type]}
+                        >
+                          <span
+                            className={cn(
+                              'mt-1.5 h-2 w-2 shrink-0 rounded-full',
+                              STATUS_COLOR[issue.displayStatus] || 'bg-white/40',
+                              active && 'ring-2 ring-brand-400/50'
+                            )}
+                          />
+                          <span className="min-w-0">
+                            <span className={cn('block text-xs font-semibold', active ? 'text-brand-300' : 'text-white')}>
+                              {issue.publicId} · {issue.categoryLabel}
+                            </span>
+                            <span className="block text-[10px] font-mono text-white/50">
+                              {issue.priority != null ? `Priority ${issue.priority}` : 'Priority pending'}
+                            </span>
                           </span>
-                          <span className="block text-[10px] font-mono text-white/50">
-                            P{issue.priority} · {issue.reports} reports
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
@@ -157,7 +198,7 @@ export function CivicIntelligenceMapSection() {
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-amber-400" />
                       <span className="text-sm font-mono font-bold text-white">
-                        {TYPE_NAME[selected.type]} · {selected.id}
+                        {selected.publicId}
                       </span>
                     </div>
                     <button
@@ -171,28 +212,30 @@ export function CivicIntelligenceMapSection() {
                   <div className="p-4 space-y-2.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="flex items-center gap-1.5 text-white/50">
+                        <Calendar className="w-3.5 h-3.5" /> Report
+                      </span>
+                      <span className="font-mono text-white/80">{selected.title}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 text-white/50">
+                        <Users className="w-3.5 h-3.5" /> Category
+                      </span>
+                      <span className="font-mono font-bold text-white">{selected.categoryLabel}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 text-white/50">
                         <Activity className="w-3.5 h-3.5" /> Priority
                       </span>
-                      <span className="font-mono font-bold text-amber-400">{selected.priority}/100</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5 text-white/50">
-                        <Users className="w-3.5 h-3.5" /> Reports
+                      <span className="font-mono font-bold text-amber-400">
+                        {selected.priority != null ? `${selected.priority}/100` : 'Pending'}
                       </span>
-                      <span className="font-mono font-bold text-white">{selected.reports}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5 text-white/50">
-                        <Calendar className="w-3.5 h-3.5" /> Promise
-                      </span>
-                      <span className="font-mono text-white/80">28 Aug</span>
                     </div>
                     <div className="pt-2 border-t border-dark-border">
                       <span className={cn(
                         'inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold font-mono border',
-                        STATUS_LABEL[selected.status]?.cls || STATUS_LABEL.onTrack.cls
+                        STATUS_LABEL[selected.displayStatus]?.cls || STATUS_LABEL.active.cls
                       )}>
-                        {STATUS_LABEL[selected.status]?.label || 'ACTIVE'}
+                        {STATUS_LABEL[selected.displayStatus]?.label || 'ACTIVE'}
                       </span>
                     </div>
                   </div>
@@ -233,7 +276,9 @@ export function CivicIntelligenceMapSection() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-white/30 mt-4 font-mono">PROTOTYPE DATA — NOT REAL-TIME MONITORING</p>
+        <p className="text-center text-xs text-white/30 mt-4 font-mono">
+          LIVE DATA — LOCATED REPORTS FROM THE CIVICCHAIN DATABASE
+        </p>
       </div>
     </section>
   );

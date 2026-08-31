@@ -18,38 +18,53 @@ function useReduceMotionPreference() {
   return ref;
 }
 
-interface IssueMarker {
+export interface IssueMarker {
   id: string;
+  publicId: string;
   lat: number;
   lng: number;
-  type: 'pothole' | 'drainage' | 'streetlight' | 'garbage' | 'infrastructure';
-  priority: number;
-  status: string;
-  reports: number;
+  category: string;
+  categoryLabel: string;
+  displayStatus: string;
+  priority: number | null;
 }
 
-export type { IssueMarker };
+/**
+ * Maps a located public incident (the shape returned by /api/map/public) to the
+ * globe's marker contract. Keeps the 3D globe fully data-driven — no fabricated
+ * default markers.
+ */
+export function toIssueMarker(source: {
+  id: string;
+  publicId: string;
+  latitude: number;
+  longitude: number;
+  category: string;
+  categoryLabel: string;
+  displayStatus: string;
+  priority: number | null;
+}): IssueMarker {
+  return {
+    id: source.id,
+    publicId: source.publicId,
+    lat: source.latitude,
+    lng: source.longitude,
+    category: source.category,
+    categoryLabel: source.categoryLabel,
+    displayStatus: source.displayStatus,
+    priority: source.priority,
+  };
+}
 
-export const MOCK_ISSUES: IssueMarker[] = [
-  { id: 'CC-1092', lat: 19.0760, lng: 72.8777, type: 'pothole', priority: 92, status: 'atRisk', reports: 63 },
-  { id: 'CC-1087', lat: 19.1197, lng: 72.8464, type: 'drainage', priority: 87, status: 'onTrack', reports: 41 },
-  { id: 'CC-1074', lat: 19.0822, lng: 72.8111, type: 'streetlight', priority: 71, status: 'assigned', reports: 28 },
-  { id: 'CC-1068', lat: 19.0330, lng: 72.8697, type: 'garbage', priority: 95, status: 'brokenPromise', reports: 87 },
-  { id: 'CC-1055', lat: 19.1012, lng: 72.9044, type: 'infrastructure', priority: 65, status: 'verificationPending', reports: 19 },
-  { id: 'CC-1041', lat: 19.0544, lng: 72.8321, type: 'drainage', priority: 89, status: 'brokenPromise', reports: 142 },
-  { id: 'CC-1033', lat: 19.1234, lng: 72.8901, type: 'pothole', priority: 78, status: 'onTrack', reports: 34 },
-  { id: 'CC-1021', lat: 19.0896, lng: 72.8523, type: 'streetlight', priority: 55, status: 'resolved', reports: 12 },
-];
-
-const TYPE_COLORS = {
-  pothole: 0xef4444,
-  drainage: 0x3b82f6,
-  streetlight: 0xf59e0b,
-  garbage: 0x22c55e,
-  infrastructure: 0x8b5cf6,
+const CATEGORY_COLORS: Record<string, number> = {
+  POTHOLE: 0xef4444,
+  DRAINAGE: 0x3b82f6,
+  STREETLIGHT: 0xf59e0b,
+  GARBAGE: 0x22c55e,
+  INFRASTRUCTURE: 0x8b5cf6,
 };
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, number> = {
   active: 0x3b82f6,
   assigned: 0x8b5cf6,
   promised: 0x06b6d4,
@@ -59,6 +74,7 @@ const STATUS_COLORS = {
   resolved: 0x16a34a,
   partiallyResolved: 0xf59e0b,
   brokenPromise: 0xef4444,
+  rejected: 0x9ca3af,
 };
 
 function latLngToVector3(lat: number, lng: number, radius: number) {
@@ -176,8 +192,11 @@ function IssueMarker3D({
     }
   });
 
-  const color = selected || hovered ? STATUS_COLORS[issue.status as keyof typeof STATUS_COLORS] : TYPE_COLORS[issue.type];
-  const size = 0.08 + (issue.priority / 100) * 0.12;
+  const color =
+    selected || hovered
+      ? STATUS_COLORS[issue.displayStatus] ?? 0x3b82f6
+      : CATEGORY_COLORS[issue.category] ?? 0x6b7280;
+  const size = 0.08 + ((issue.priority ?? 0) / 100) * 0.12;
 
   return (
     <group
@@ -230,10 +249,10 @@ function IssueMarker3D({
           }}
         >
           <div className="font-mono text-[10px] font-bold text-white px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm">
-            {issue.id}
+            {issue.publicId}
           </div>
           <div className="font-mono text-[9px] text-amber-300/90 mt-0.5 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm">
-            Priority: {issue.priority}
+            Priority: {issue.priority ?? '—'}
           </div>
         </div>
       </Html>
@@ -263,7 +282,7 @@ function ConnectionLines({ issues, radius = 2.5 }: { issues: IssueMarker[]; radi
   const colors = useMemo(() => {
     const col = new Float32Array(issues.length * 2 * 3);
     issues.forEach((issue, i) => {
-      const color = new THREE.Color(TYPE_COLORS[issue.type]);
+      const color = new THREE.Color(CATEGORY_COLORS[issue.category] ?? 0x6b7280);
       col[i * 6] = color.r;
       col[i * 6 + 1] = color.g;
       col[i * 6 + 2] = color.b;
@@ -318,6 +337,8 @@ interface CivicGlobeProps {
   onIssueSelect?: (issue: IssueMarker) => void;
   className?: string;
   showConnections?: boolean;
+  /** Located incidents to render. Empty by default; never a fabricated set. */
+  issues?: IssueMarker[];
 }
 
 export function CivicGlobe({
@@ -325,6 +346,7 @@ export function CivicGlobe({
   onIssueSelect,
   className,
   showConnections = true,
+  issues = [],
 }: CivicGlobeProps) {
   const reduce = useReducedMotion();
 
@@ -340,8 +362,8 @@ export function CivicGlobe({
           <AtmosphereGlow />
           <GlobeSphere />
           <GlobeWireframe />
-          {showConnections && <ConnectionLines issues={MOCK_ISSUES} />}
-          {MOCK_ISSUES.map((issue) => (
+          {showConnections && <ConnectionLines issues={issues} />}
+          {issues.map((issue) => (
             <IssueMarker3D
               key={issue.id}
               issue={issue}

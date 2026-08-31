@@ -13,6 +13,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { CARTO_STYLE, STATUS_COLORS } from '@/components/dashboard/IssuesMapInner';
 import type { IssueListItem } from '@/lib/issues/types';
 
+export type MapView = 'markers' | 'heatmap';
+
 export interface CivicMapPoint {
   id: string;
   publicId: string;
@@ -50,12 +52,14 @@ export function CivicMapInner({
   selectedId,
   focus,
   onSelectImage,
+  view = 'markers',
   className,
 }: {
   issues: IssueListItem[];
   selectedId: string | null;
   focus?: IssueListItem | null;
   onSelectImage?: (id: string | null) => void;
+  view?: MapView;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -65,7 +69,11 @@ export function CivicMapInner({
   const [offline, setOffline] = useState(false);
   const pointsRef = useRef<CivicMapPoint[]>([]);
   const onSelectRef = useRef(onSelectImage);
-  onSelectRef.current = onSelectImage;
+
+  // Keep the ref in sync with the latest callback without mutating during render.
+  useEffect(() => {
+    onSelectRef.current = onSelectImage;
+  }, [onSelectImage]);
 
   // One map instance for the lifetime of the mount.
   const [ready, setReady] = useState(false);
@@ -80,7 +88,44 @@ export function CivicMapInner({
     });
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
     map.on('error', () => setOffline(true));
-    map.on('load', () => setReady(true));
+    map.on('load', () => {
+      // Heatmap source + layer, populated from the located points. One GeoJSON
+      // source reused by the markers mode (point geometry) and the heatmap mode
+      // (density weighting). Defaults to the marker layer as the primary view.
+      map.addSource('civic-heatmap', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'civic-heatmap-layer',
+        type: 'heatmap',
+        source: 'civic-heatmap',
+        paint: {
+          'heatmap-weight': ['interpolate', ['linear'], ['get', '_weight'], 0, 0.6, 1, 1],
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 15, 4],
+          'heatmap-color': [
+            'interpolate',
+            ['linear'],
+            ['heatmap-density'],
+            0,
+            'rgba(33,102,172,0)',
+            0.2,
+            'rgb(103,169,207)',
+            0.4,
+            'rgb(255,193,7)',
+            0.6,
+            'rgb(255,140,0)',
+            0.8,
+            'rgb(239,83,80)',
+            1,
+            'rgb(178,24,43)',
+          ],
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 14, 15, 44],
+          'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.85, 15, 0.55],
+        },
+      });
+      setReady(true);
+    });
     mapRef.current = map;
     return () => {
       markersRef.current.forEach((m) => m.remove());
@@ -103,6 +148,9 @@ export function CivicMapInner({
     pointsRef.current = points;
 
     markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    if (view === 'heatmap') return;
+
     markersRef.current = points.map((point) => {
       const selected = point.id === selectedId;
       const el = document.createElement('button');
@@ -138,7 +186,28 @@ export function CivicMapInner({
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
     };
-  }, [points, pointsKey, selectedId, ready]);
+  }, [points, pointsKey, selectedId, ready, view]);
+
+  // Keep the GeoJSON heatmap source in sync with the located points and toggle
+  // layer visibility with the view. Markers are DOM elements (handled above);
+  // the heatmap is a vector layer keyed off the same points.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !map.getSource('civic-heatmap')) return;
+
+    const source = map.getSource('civic-heatmap') as import('maplibre-gl').GeoJSONSource;
+    source.setData({
+      type: 'FeatureCollection',
+      features: points.map((p) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
+        properties: { _weight: 1 },
+      })),
+    });
+    if (map.getLayer('civic-heatmap-layer')) {
+      map.setLayoutProperty('civic-heatmap-layer', 'visibility', view === 'heatmap' ? 'visible' : 'none');
+    }
+  }, [points, pointsKey, view, ready]);
 
   // Keep the selection popup in sync with the selected point.
   useEffect(() => {

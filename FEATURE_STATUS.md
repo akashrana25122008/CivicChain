@@ -13,6 +13,37 @@ Phase 0 freeze & audit. Generated from direct source inspection
 | MISSING  | Expected capability does not currently exist                   |
 | UNKNOWN  | Source inspection insufficient to determine status             |
 
+## Phase 12 Update (this revision — Real-Time Civic Map)
+
+The civic map now renders **real located reports** end-to-end, and the last
+hardcoded map surfaces were removed.
+
+- **Civic Map workspace (`/map`)** — PARTIAL → **WORKING** (already real) plus a
+  new **density heatmap layer**: a Maplibre `heatmap` layer over the same
+  `/api/map` located issues, toggled against the status markers with a
+  Markers↔Heatmap control and a shared GeoJSON source synced to the points.
+  (`src/components/map/CivicMapInner.tsx`, `CivicMap.tsx`.)
+- **Public landing map (`CivicIntelligenceMapSection`)** — MOCK → **WORKING**.
+  The section now pulls real located issues + aggregate counts from the new
+  anonymous, read-only **`GET /api/map/public`** (bounded, sanitized — no
+  personal data: publicId/title/category/status/coordinates/timestamps). The
+  "LIVE ISSUES" list, the selectable detail panel, and the animated stat cards
+  (active / in-progress / resolved / located) are all real. The
+  `PROTOTYPE DATA — NOT REAL-TIME MONITORING` footer disclaimer was replaced
+  with `LIVE DATA — LOCATED REPORTS FROM THE CIVICCHAIN DATABASE`.
+- **3D Civic Globe (`src/components/3d/CivicGlobe.tsx`)** — the hardcoded
+  `MOCK_ISSUES` array (fabricated Mumbai markers) is **removed**. The globe is
+  now fully data-driven: it accepts an `issues` prop (via the new
+  `toIssueMarker()` adapter from the `/api/map/public` shape) and renders empty
+  by default — no fabricated incidents remain.
+- **Summary table updates** — `Live incident map data` MOCK → **WORKING**;
+  `Heatmaps` MISSING → **PARTIAL** (density layer present; severity/priority-
+  weighted + H3 tile layers still future).
+
+Verification: `tsc --noEmit` clean; eslint clean; `next build` exit 0 (58
+pages incl. `/api/map/public`); 62/62 unit tests pass; live Postgres smoke test
+(27 located issues, real status distribution + centroid).
+
 ## Summary
 
 | WORKING | PARTIAL | MOCK | MISSING | UNKNOWN |
@@ -285,7 +316,7 @@ community votes, and civic karma are now real DB-backed logic — updated above.
 | Duplicate detection / report merging            | MOCK     | Timed animation only (`MergeDemo`: 47 → 1)                               | `src/components/landing/FeaturesSection.tsx:167-244`                                  | Geo + text + image similarity clustering                       |
 | AI auto-routing / department assignment         | PARTIAL  | Rule-based category→department (`mapping.ts`); no ML routing yet               | `src/lib/issues/mapping.ts`; `/dashboard/issues/[id]/page.tsx`                    | Jurisdiction/routing engine                                    |
 | AI verification meters (issue detail page)      | MOCK     | Hardcoded `AI_VERIFICATION` constants                                    | `src/app/dashboard/issues/[id]/page.tsx:48-55`                                        | Real CV verification pipeline                                  |
-| Live incident map data                          | MOCK     | `MOCK_ISSUES` exported from `CivicGlobe.tsx`                            | `src/components/3d/CivicGlobe.tsx:33-42`; landing + map + dashboard pages             | Real incident coordinates from DB                              |
+| Live incident map data                          | WORKING  | **Real** located reports; `/api/map` (scoped) + public `/api/map/public` for the landing Civic Intelligence Map; `CivicGlobe` is data-driven (no `MOCK_ISSUES`) | `src/app/api/map/{route,public}/route.ts`; `src/components/map/CivicMap*`; `src/components/landing/CivicIntelligenceMapSection.tsx`; `src/components/3d/CivicGlobe.tsx` | Preserve (Phase 24 real-time stream) |
 | Dashboard KPIs / analytics                      | MOCK     | Hardcoded `KPI`, stat card arrays                                        | `src/app/dashboard/page.tsx:19-33`; `verification`, `promises`, `escalations`, `community`, `map` pages | Real analytics queries                          |
 | Recent issues list & issue catalogue            | MOCK     | Hardcoded `RECENT_ISSUES` / `ISSUES` arrays                              | `src/app/dashboard/page.tsx:28`; `src/app/dashboard/issues/page.tsx:9`                | DB query                                                    |
 | Issue detail page                              | MOCK     | Hardcoded `ISSUE` / `TIMELINE` constants (always shows CC-1092)          | `src/app/dashboard/issues/[id]/page.tsx:22-55`                                        | Serve by `params.id` from DB                                   |
@@ -305,7 +336,7 @@ community votes, and civic karma are now real DB-backed logic — updated above.
 | Image / video upload & storage                  | MISSING  | Drag-drop zone only, no handler                                          | `src/app/report/page.tsx:116-129`                                                    | Multipart upload API + object storage                           |
 | Geocoding / coordinate capture                  | MISSING  | Free-text location only; coords hardcoded                               | `src/app/report/page.tsx:107`                                                        | Geocoder on intake + reverse geocode for maps                   |
 | Jurisdiction detection                          | MISSING  | —                                                                        | —                                                                                     | Ward/zone → department lookup                                   |
-| Heatmaps (density/severity/priority/resolved)   | MISSING  | —                                                                        | —                                                                                     | H3 geospatial aggregation + tiles                              |
+| Heatmaps (density/severity/priority/resolved)   | PARTIAL  | **Real** density heatmap layer (Maplibre `heatmap`) over `/api/map` located issues with a Markers↔Heatmap toggle on `/map` | `src/components/map/CivicMapInner.tsx` (GeoJSON heatmap source/layer); `src/components/map/CivicMap.tsx` (view toggle) | Add severity/priority-weighted + H3 tile layers |
 | Civic karma                                    | PARTIAL  | **Real** `KarmaEvent` ledger + idempotent `applyKarmaEvent()` + `calculateKarma()` (`src/lib/community/karma.ts`); no UI yet                      | `src/lib/community/karma.ts`                                    | Add karma UI + touchpoints that award events                    |
 | Live real-time tracking / websockets            | MISSING  | (`socket.io-client` installed, unused)                                  | —                                                                                     | Event stream + socket server                                   |
 | Notifications (in-app/email/push)               | MISSING  | —                                                                        | —                                                                                     | Notifier service                                                |

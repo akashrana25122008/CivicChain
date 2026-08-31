@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/dashboard/EmptyState';
 import { STATUS_COLORS } from '@/components/dashboard/IssuesMapInner';
 import { CATEGORY_SELECT_OPTIONS, STATUS_LABELS, PRIORITY_LEVEL_LABELS } from '@/lib/issues/mapping';
 import type { IssueListItem } from '@/lib/issues/types';
+import type { MapView } from './CivicMapInner';
 
 const CivicMapInner = dynamic(
   () => import('./CivicMapInner').then((m) => m.CivicMapInner),
@@ -109,6 +110,7 @@ export function CivicMap() {
   const [department, setDepartment] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focus, setFocus] = useState<IssueListItem | null>(null);
+  const [view, setView] = useState<MapView>('markers');
 
   const params = new URLSearchParams();
   if (category) params.set('category', category);
@@ -248,7 +250,34 @@ export function CivicMap() {
                   selectedId={selectedId}
                   focus={focus}
                   onSelectImage={setSelectedId}
+                  view={view}
                 />
+
+                {/* View toggle: markers vs. density heatmap */}
+                <div className="absolute top-3 left-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-dark-bg/95 border border-neutral-200 dark:border-dark-border p-1 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setView('markers')}
+                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                      view === 'markers'
+                        ? 'bg-brand-600 text-white'
+                        : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    Markers
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView('heatmap')}
+                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                      view === 'heatmap'
+                        ? 'bg-brand-600 text-white'
+                        : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    Heatmap
+                  </button>
+                </div>
               </div>
             </Card>
 
