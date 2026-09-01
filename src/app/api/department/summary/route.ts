@@ -55,7 +55,7 @@ export async function GET() {
         slaHealthForAuthority({ authorityId: authority.id }),
       ]);
 
-    const activity = await prisma.auditLog.findMany({
+    const activity = await prisma.auditEvent.findMany({
       where: { issue: { authorityId: authority.id } },
       orderBy: { createdAt: 'desc' },
       take: 6,
@@ -68,7 +68,7 @@ export async function GET() {
     return NextResponse.json({
       authority: {
         name: authority.name,
-        department: authority.department,
+        department: authority.department?.name ?? null,
         jurisdiction: authority.jurisdiction,
       },
       stats: {

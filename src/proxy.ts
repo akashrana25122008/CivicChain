@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { rateLimiters, applyRateLimit } from '@/lib/security/rate-limit';
 import { securityHeadersMiddleware, mapSecurityHeadersMiddleware } from '@/lib/security/headers';
+import { generateRequestId, logAccessLog } from '@/lib/security/requestLog';
+import { currentLogger, runWithContext } from '@/lib/server/requestContext';
 
 /**
  * Next.js 16 Proxy (formerly Middleware) — optimistic route protection + security.
@@ -10,8 +12,57 @@ import { securityHeadersMiddleware, mapSecurityHeadersMiddleware } from '@/lib/s
  * ENFORCED again inside every route handler against the live database — the
  * token here is only a fast cache of the JWT written at sign-in.
  * /api/auth/* is never matched so the Auth.js endpoints stay public.
+ *
+ * Phase 22: every matched request runs inside a request-scoped context
+ * (AsyncLocalStorage) carrying the requestId and a child logger, so all
+ * downstream handlers, DB queries, and error paths share the same correlation
+ * id and structured logger.
  */
 export async function proxy(request: NextRequest) {
+  const startedAt = Date.now();
+  const requestId = generateRequestId();
+  const { pathname } = request.nextUrl;
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown';
+
+  // Propagate the correlation id to the downstream route handler so it can
+  // establish its own request-scoped context (AsyncLocalStorage) with the
+  // same id. Mutating the incoming request headers is visible to handlers
+  // via NextResponse.next().
+  request.headers.set('x-request-id', requestId);
+
+  return runWithContext(
+    {
+      requestId,
+      logger: currentLogger().child({ requestId }),
+      startedAt,
+      ip,
+    },
+    async () => {
+      const response = await handleRequest(request);
+
+      // Attach the correlation id so callers can quote it in support tickets.
+      response.headers.set('x-request-id', requestId);
+      response.headers.set('x-request-path', pathname);
+
+      logAccessLog({
+        requestId,
+        method: request.method,
+        path: pathname,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        ip,
+        rateLimited: response.status === 429 || response.status === 503,
+      });
+
+      return response;
+    },
+  );
+}
+
+async function handleRequest(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Apply rate limiting to auth endpoints. Every /api/auth/* call is counted
@@ -44,12 +95,26 @@ export async function proxy(request: NextRequest) {
     return applySecurityHeaders(authResponse, pathname);
   }
 
-  // Apply rate limiting to report creation endpoints
-  if ((pathname === '/api/issues' || pathname === '/api/reports') && request.method === 'POST') {
-    const { allowed, response, headers } = await applyRateLimit(request, rateLimiters.reportCreation);
-    if (!allowed && response) {
+  // Apply stricter rate limiting to the admin API (sensitive, high-value).
+  if (pathname.startsWith('/api/admin')) {
+    const { response } = await applyRateLimit(request, rateLimiters.admin);
+    if (response) {
       return applySecurityHeaders(response, pathname);
     }
+  }
+
+  // Apply a dedicated rate limit to geocoding (protects the external provider
+  // from being hammered by autocomplete/reverse requests).
+  if (pathname.startsWith('/api/geocode')) {
+    const { response } = await applyRateLimit(request, rateLimiters.geocode);
+    if (response) {
+      return applySecurityHeaders(response, pathname);
+    }
+  }
+
+  // Apply rate limiting to report creation endpoints
+  if ((pathname === '/api/issues' || pathname === '/api/reports') && request.method === 'POST') {
+    const { response } = await applyRateLimit(request, rateLimiters.reportCreation);
     if (response) {
       return applySecurityHeaders(response, pathname);
     }
@@ -62,10 +127,7 @@ export async function proxy(request: NextRequest) {
       pathname.endsWith('/evidence') &&
       request.method === 'POST');
   if (isEvidenceUpload) {
-    const { allowed, response, headers } = await applyRateLimit(request, rateLimiters.fileUpload);
-    if (!allowed && response) {
-      return applySecurityHeaders(response, pathname);
-    }
+    const { response } = await applyRateLimit(request, rateLimiters.fileUpload);
     if (response) {
       return applySecurityHeaders(response, pathname);
     }
@@ -73,21 +135,24 @@ export async function proxy(request: NextRequest) {
 
   // Apply rate limiting to map API
   if (pathname.startsWith('/api/map') || pathname === '/map') {
-    const { allowed, response, headers } = await applyRateLimit(request, rateLimiters.map);
-    if (!allowed && response) {
-      return applySecurityHeaders(response, pathname);
-    }
+    const { response } = await applyRateLimit(request, rateLimiters.map);
     if (response) {
       return applySecurityHeaders(response, pathname);
     }
   }
 
-  // Apply rate limiting to general API endpoints
-  if (pathname.startsWith('/api/')) {
-    const { allowed, response, headers } = await applyRateLimit(request, rateLimiters.api);
-    if (!allowed && response) {
-      return applySecurityHeaders(response, pathname);
-    }
+  // Apply rate limiting to general API endpoints.
+  // Paths already covered by a specific bucket (auth, admin, geocode, map,
+  // report, upload) are intentionally skipped so they are NOT double-counted.
+  const coveredBySpecificBucket =
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/api/admin') ||
+    pathname.startsWith('/api/geocode') ||
+    pathname.startsWith('/api/map') ||
+    (pathname === '/api/issues' || pathname === '/api/reports') ||
+    pathname.startsWith('/api/evidence/');
+  if (pathname.startsWith('/api/') && !coveredBySpecificBucket) {
+    const { response } = await applyRateLimit(request, rateLimiters.api);
     if (response) {
       return applySecurityHeaders(response, pathname);
     }
@@ -166,9 +231,9 @@ export async function proxy(request: NextRequest) {
 function applySecurityHeaders(response: NextResponse, pathname: string): NextResponse {
   // Use map-specific CSP for map pages
   if (pathname === '/map' || pathname.startsWith('/dashboard/map') || pathname.startsWith('/api/map')) {
-    return mapSecurityHeadersMiddleware({ nextUrl: { pathname } } as any, response);
+    return mapSecurityHeadersMiddleware({ nextUrl: { pathname } }, response);
   }
-  return securityHeadersMiddleware({ nextUrl: { pathname } } as any, response);
+  return securityHeadersMiddleware({ nextUrl: { pathname } }, response);
 }
 
 export const config = {
@@ -189,5 +254,7 @@ export const config = {
     '/api/map/:path*',
     '/api/evidence/:path*',
     '/api/reports/:path*',
+    '/api/geocode/:path*',
+    '/api/health',
   ],
 };

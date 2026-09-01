@@ -1,5 +1,6 @@
 import { PrismaClient } from '../../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { instrumentPrisma } from './server/prismaMonitor';
 
 // Prisma 7 requires a driver adapter. Connection URL comes from PAGE
 // environment (.env / .env.local — never hardcoded, never committed).
@@ -19,7 +20,14 @@ function createPrismaClient(): PrismaClient {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
   });
-  return new PrismaClient({ adapter });
+  const client = new PrismaClient({
+    adapter,
+    // Enable query events so the slow-query monitor (prismaMonitor) observes
+    // durations; it only emits a structured line for queries >= 200 ms.
+    log: ['query', 'warn', 'error'],
+  });
+  instrumentPrisma(client);
+  return client;
 }
 
 export const prisma: PrismaClient =

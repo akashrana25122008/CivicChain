@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: civicchain
+          POSTGRES_PASSWORD: civicchain
+          POSTGRES_DB: civicchain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U civicchain"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Unit tests are hermetic (no DB writes); a synthetic DATABASE_URL is all
+      # the module graph needs to load. The Postgres service above exists for a
+      # future integration-test layer and to prove datasource configuration.
+      DATABASE_URL: postgresql://civicchain:civicchain@localhost:5432/civicchain
+      SHADOW_DATABASE_URL: postgresql://civicchain:civicchain@localhost:5432/civicchain
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Verify migrations apply, cleanly
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://civicchain:civicchain@localhost:5432/civicchain
+
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://civicchain:civicchain@localhost:5432/civicchain
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}

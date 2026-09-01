@@ -16,7 +16,7 @@ export async function avgResolutionMinutes(
 ): Promise<number | null> {
   const rows = await prisma.$queryRaw<Array<{ avg_minutes: number | null }>>(Prisma.sql`
     SELECT AVG(EXTRACT(EPOCH FROM (al."createdAt" - i."createdAt")) / 60)::float AS avg_minutes
-    FROM "AuditLog" al
+    FROM "AuditEvent" al
     JOIN "Issue" i ON i.id = al."issueId"
     WHERE al.action = 'STATUS_CHANGED'
       AND al.metadata->>'to' = 'RESOLVED'

@@ -154,7 +154,7 @@ export interface EscalationRow {
   createdAt: Date;
   issue: { publicId: string } | null;
   caller: { name: string | null } | null;
-  authority: { department: string } | null;
+  authority: { department: { name: string } | null } | null;
 }
 
 /**
@@ -172,7 +172,7 @@ export function mapEscalationItems(
       levelLabel: escalationLevelLabel(e.level),
       status: e.status,
       issuer: e.caller?.name ?? null,
-      authority: e.authority?.department ?? null,
+      authority: e.authority?.department?.name ?? null,
       ageHours: Math.round((now.getTime() - e.createdAt.getTime()) / (1000 * 60 * 60)),
       createdAt: e.createdAt.toISOString(),
     }))
@@ -213,7 +213,7 @@ export async function getAdminCommandCenter(): Promise<AdminCommandCenterData> {
     await Promise.all([
       prisma.user.count({ where: { role: 'CITIZEN' } }),
       prisma.authority.count(),
-      prisma.authority.groupBy({ by: ['department'] }),
+      prisma.department.count(),
       prisma.incident.count(),
       prisma.promise.findMany({
         where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
@@ -224,7 +224,7 @@ export async function getAdminCommandCenter(): Promise<AdminCommandCenterData> {
         include: {
           issue: { select: { publicId: true } },
           caller: { select: { name: true } },
-          authority: { select: { department: true } },
+          authority: { include: { department: { select: { name: true } } } },
         },
       }),
       prisma.verification.count(),
@@ -324,7 +324,7 @@ export async function getAdminCommandCenter(): Promise<AdminCommandCenterData> {
     kpis: {
       citizens,
       authorities,
-      departments: departmentsRows.length,
+      departments: departmentsRows,
       issues: { total: totalIssues, active: activeIssues, resolved: resolvedIssues, critical: criticalIssues },
       incidents: incidentCount,
       escalations: { total: await prisma.escalation.count(), open: openEsc.length },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { currentLogger } from '@/lib/server/requestContext';
 import { RoleApprovalStatus, UserRole } from '../../../../../generated/prisma/client';
 
 /**
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
       { status: 415 },
     );
   } catch (error) {
-    console.error('register error', error);
+    currentLogger().error({ err: error }, 'register error');
     return NextResponse.json(
       { error: { code: 'REGISTER_FAILED', message: 'Could not register. Please try again.' } },
       { status: 500 },

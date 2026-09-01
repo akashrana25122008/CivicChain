@@ -38,6 +38,7 @@ export async function ensurePromiseForIssue(issueId: string): Promise<{ promiseI
       id: true,
       publicId: true,
       authorityId: true,
+      departmentId: true,
       severity: true,
       status: true,
       reporterId: true,
@@ -58,6 +59,7 @@ export async function ensurePromiseForIssue(issueId: string): Promise<{ promiseI
     data: {
       issueId: issue.id,
       authorityId: issue.authorityId,
+      departmentId: issue.departmentId ?? null,
       deadline,
       status: PromiseStatus.OPEN,
       description: `Resolution committed for ${issue.publicId}`,

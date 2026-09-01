@@ -1,6 +1,9 @@
 import { prisma } from '@/lib/db';
 import { forbidden } from '@/lib/server/api';
-import type { Authority, User } from '../../../generated/prisma/client';
+import type { Authority, Department, User } from '../../../generated/prisma/client';
+
+/** Authority as resolved for the authenticated operator, with its Department. */
+export type OwnAuthority = Authority & { department: Department | null };
 
 /**
  * Server-side helpers for AUTHORITY-role users. The authority record is always
@@ -11,13 +14,16 @@ export function isAuthority(user: User): user is User & { role: 'AUTHORITY' } {
   return user.role === 'AUTHORITY';
 }
 
-export async function getOwnAuthority(user: User): Promise<Authority | null> {
+export async function getOwnAuthority(user: User): Promise<OwnAuthority | null> {
   if (!isAuthority(user)) return null;
-  return prisma.authority.findUnique({ where: { userId: user.id } });
+  return prisma.authority.findUnique({
+    where: { userId: user.id },
+    include: { department: true },
+  });
 }
 
 /** Resolve the caller's authority or throw 403 when they have none. */
-export async function requireOwnAuthority(user: User): Promise<Authority> {
+export async function requireOwnAuthority(user: User): Promise<OwnAuthority> {
   const authority = await getOwnAuthority(user);
   if (!authority) throw forbidden();
   return authority;

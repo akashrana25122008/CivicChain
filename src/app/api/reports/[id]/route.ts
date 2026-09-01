@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequest } from '@/lib/server/timing';
 import { getReportDetailHttp, patchReportHttp } from '@/lib/issues/http';
 
 export interface RouteContext {
@@ -13,12 +14,16 @@ export interface RouteContext {
  * PATCH: lifecycle status update through the single state machine
  *   (src/lib/issues/transition.ts) — the adapter adds nothing.
  */
-export async function GET(request: NextRequest, ctx: RouteContext): Promise<NextResponse> {
-  const { id } = await ctx.params;
-  return getReportDetailHttp(request, id);
-}
+export const GET = withRequest(
+  async (request: NextRequest, ctx: RouteContext): Promise<NextResponse> => {
+    const { id } = await ctx.params;
+    return getReportDetailHttp(request, id);
+  },
+);
 
-export async function PATCH(request: NextRequest, ctx: RouteContext): Promise<NextResponse> {
-  const { id } = await ctx.params;
-  return patchReportHttp(request, id);
-}
+export const PATCH = withRequest(
+  async (request: NextRequest, ctx: RouteContext): Promise<NextResponse> => {
+    const { id } = await ctx.params;
+    return patchReportHttp(request, id);
+  },
+);

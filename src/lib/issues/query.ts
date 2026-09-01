@@ -38,7 +38,7 @@ export interface IssueListResult {
 }
 
 const ISSUE_LIST_INCLUDE = {
-  authority: true,
+  authority: { include: { department: { select: { name: true } } } },
   promise: true,
   reporter: { select: { name: true, email: true } },
 } as const;

@@ -13,6 +13,7 @@ import 'dotenv/config';
 import { PrismaClient as Client } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { recordAudit } from '../src/lib/server/audit';
+import { DEPARTMENTS } from '../src/lib/server/departments/registry';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -21,14 +22,6 @@ if (!connectionString) {
 
 const adapter = new PrismaPg({ connectionString });
 const prisma = new Client({ adapter });
-
-const DEPARTMENTS = [
-  'Roads & Infrastructure Department',
-  'Public Lighting Department',
-  'Sanitation Department',
-  'Water Supply Department',
-  'Infrastructure Department',
-];
 
 function deptForCategory(category: string): string | null {
   const map: Record<string, string> = {
@@ -74,18 +67,37 @@ async function main() {
   };
   console.log('[seed] Users ready:', Object.keys(users).join(', '));
 
+  // Departments are the first-class (Phase 23) routing entities. Authorities
+  // attach via departmentId; names must match the rule-based routing mapping
+  // (getAuthorityDepartmentForCategory) exactly.
+  const departmentIds: Record<string, string> = {};
+  for (const name of DEPARTMENTS) {
+    const dept = await prisma.department.upsert({
+      where: { name },
+      update: {},
+      create: { name, jurisdiction: 'Navapur, Maharashtra' },
+    });
+    departmentIds[name] = dept.id;
+  }
+
   // Authorities match the departments used by the rule-based routing mapping.
   const authorities: Record<string, string> = {};
   for (const department of DEPARTMENTS) {
-    let authority = await prisma.authority.findFirst({ where: { department } });
+    const seededName = `Municipal Corporation of Navapur — ${department}`;
+    let authority = await prisma.authority.findFirst({ where: { name: seededName } });
     if (!authority) {
       authority = await prisma.authority.create({
         data: {
-          name: `Municipal Corporation of Navapur — ${department}`,
-          department,
+          name: seededName,
+          departmentId: departmentIds[department],
           email: 'authority@civicchain.dev',
           jurisdiction: 'Navapur, Maharashtra',
         },
+      });
+    } else if (!authority.departmentId) {
+      authority = await prisma.authority.update({
+        where: { id: authority.id },
+        data: { departmentId: departmentIds[department] },
       });
     }
     authorities[department] = authority.id;
@@ -210,6 +222,7 @@ async function main() {
           longitude: demo.lng,
           reporterId: users[demo.reporter].id,
           authorityId: authority ? authorities[authority] ?? null : null,
+          departmentId: authority ? departmentIds[authority] ?? null : null,
           createdAt,
         },
       });
@@ -233,6 +246,7 @@ async function main() {
           data: {
             issueId: issue.id,
             authorityId: authorities[authority] ?? null,
+            departmentId: departmentIds[authority] ?? null,
             deadline: new Date(now + demo.promise.daysFromNow * dayMs),
             status: demo.promise.status,
             description: 'DEMO promise seeded for development.',

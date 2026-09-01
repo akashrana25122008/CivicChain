@@ -39,7 +39,7 @@ export async function GET() {
       ]);
 
     const departments = await prisma.authority.findMany({
-      select: { id: true, name: true, department: true },
+      select: { id: true, name: true, department: { select: { name: true } } },
     });
     const deptMap = new Map(departments.map((d) => [d.id, d]));
 
@@ -58,7 +58,7 @@ export async function GET() {
         const dept = row.authorityId ? deptMap.get(row.authorityId) : undefined;
         return {
           authorityId: row.authorityId,
-          label: dept?.department ?? dept?.name ?? 'Unassigned',
+          label: dept?.department?.name ?? dept?.name ?? 'Unassigned',
           count: row._count._all,
         };
       }),

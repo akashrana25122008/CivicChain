@@ -11,13 +11,15 @@ import {
 } from '@/lib/issues/mapping';
 import {
   AuditAction,
+  IssueStatus,
   type AIAnalysis,
-  type AuditLog,
+  type AuditEvent,
   type Authority,
   type Evidence,
   type Incident,
   type Issue,
   type Promise as CivicPromise,
+  type VoteType,
 } from '../../../generated/prisma/client';
 import type {
   AiAnalysisItem,
@@ -30,6 +32,7 @@ import type {
   PriorityBreakdown,
   SlaSnapshotItem,
   TimelineItem,
+  VoteSummaryItem,
 } from './types';
 import { computePriorityScore, evidenceConfidenceScore } from '@/lib/server/intelligence/priority/engine';
 import { calculateSlaState } from '@/lib/sla/state';
@@ -51,14 +54,15 @@ export type SerializerIssue = Issue & {
   incident?: (Incident & {
     issues?: Array<{ id: string; publicId: string; status: string }>;
   }) | null;
+  votes?: Array<{ type: VoteType }>;
 };
 
 interface IssueRowInput {
   issue: SerializerIssue;
-  authority?: Authority | null;
+  authority?: (Authority & { department?: { name: string } | null }) | null;
   promise?: CivicPromise | null;
   evidence?: EvidenceWithVerifications[];
-  auditLogs?: AuditLog[];
+  auditEvents?: AuditEvent[];
   viewerId?: string | null;
   reporter?: { name: string | null; email: string } | null;
   /**
@@ -104,7 +108,7 @@ export function serializeIssueListRow(input: IssueRowInput): IssueListItem {
     priority: issue.priority,
     priorityLevel: issue.priorityLevel ?? null,
     location: issue.location,
-    authority: authority?.name ?? authority?.department ?? null,
+    authority: authority?.department?.name ?? authority?.name ?? null,
     promiseLabel: promise
       ? `Promise · ${formatDate(promise.deadline)}`
       : null,
@@ -202,6 +206,14 @@ export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
   const row = serializeIssueListRow(input);
   const { issue, evidence } = input;
   const ai = issue.aiAnalysis ?? null;
+  const votes = issue.votes ?? [];
+  const voteSummary: VoteSummaryItem = { confirm: 0, dispute: 0, support: 0, duplicate: 0, total: votes.length };
+  for (const v of votes) {
+    if (v.type === 'CONFIRM') voteSummary.confirm += 1;
+    else if (v.type === 'DISPUTE') voteSummary.dispute += 1;
+    else if (v.type === 'SUPPORT') voteSummary.support += 1;
+    else if (v.type === 'DUPLICATE') voteSummary.duplicate += 1;
+  }
   return {
     ...row,
     priorityLevel: priorityLevelLabel(issue),
@@ -210,7 +222,7 @@ export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
     longitude: issue.longitude,
     contact: canSeeReporterData(input, 'contact') ? issue.contact : null,
     evidence: (evidence ?? []).map(toEvidenceItem),
-    timeline: toTimeline(input.auditLogs),
+    timeline: toTimeline(input.auditEvents),
     aiConfidence: ai?.confidence ?? null, // back-compat alias
     analysisStatus: ai?.status ?? null,
     aiAnalysis: ai ? toAiAnalysisItem(ai) : null,
@@ -218,6 +230,13 @@ export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
     priorityBreakdown: toPriorityBreakdown(issue, evidence),
     allowedTransitions: input.allowedTransitions ?? [],
     sla: toSlaSnapshot(issue, input.promise),
+    // Phase 24 — the reporter may verify/dispute a RESOLVED issue (lifecycle
+    // handled by verifyIssue), surfaced to the client only for the owner.
+    canVerify:
+      input.viewerId != null &&
+      issue.reporterId === input.viewerId &&
+      issue.status === IssueStatus.RESOLVED,
+    voteSummary,
   };
 }
 
@@ -255,14 +274,14 @@ const TIMELINE_LABELS: Partial<Record<AuditAction, string>> = {
   [AuditAction.AUTHORITY_ASSIGNED]: 'Authority assigned',
 };
 
-function toTimeline(auditLogs: AuditLog[] | undefined): TimelineItem[] {
-  if (!auditLogs || auditLogs.length === 0) return [];
-  return auditLogs
+function toTimeline(auditEvents: AuditEvent[] | undefined): TimelineItem[] {
+  if (!auditEvents || auditEvents.length === 0) return [];
+  return auditEvents
     .slice()
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-    .map((log, index, arr) => ({
-      date: formatDate(log.createdAt),
-      label: TIMELINE_LABELS[log.action] ?? log.action,
+    .map((event, index, arr) => ({
+      date: formatDate(event.createdAt),
+      label: TIMELINE_LABELS[event.action] ?? event.action,
       state: index === arr.length - 1 ? 'current' : 'completed',
     }));
 }

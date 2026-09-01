@@ -1,21 +1,30 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import Link from 'next/link';
 import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
-import { Button } from '@/components/ui/Button';
+import useSWR from 'swr';
 import { AuthActions } from './AuthActions';
 import { CivicHero3DWrapper } from '@/components/3d/CivicHero3D';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
-import { ArrowRight, Activity, Target, Eye, Shield } from 'lucide-react';
+import { Activity, Target, Eye, CheckCircle2 } from 'lucide-react';
 import { DUR, EASE, SPRING } from '@/lib/motion';
 
-const METRICS = [
-  { label: 'ACTIVE CIVIC ISSUES', value: 2481, icon: Activity, color: 'text-brand-400', prefix: '', suffix: '' },
-  { label: 'PROMISES TRACKED', value: 1736, icon: Target, color: 'text-accent-400', prefix: '', suffix: '' },
-  { label: 'AI-VERIFIED RESOLUTIONS', value: 1294, icon: Eye, color: 'text-emerald-400', prefix: '', suffix: '' },
-  { label: 'BROKEN PROMISES', value: 214, icon: Shield, color: 'text-red-400', prefix: '', suffix: '' },
-];
+export interface LandingIntelligence {
+  liveIssues: number;
+  resolvedToday: number;
+  promisesTracked: number;
+  brokenPromises: number;
+  activeRiskZones: number;
+  averageResolutionTime: number | null;
+  slaSuccessRatePct: number | null;
+  verifiedResolutions: number;
+  aiConfidence: number | null;
+  resolutionRatePct: number | null;
+  totalIssues: number;
+  generatedAt: string;
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 /**
  * Hero entrance sequence (§3): logo/nav handled by LandingNavigation; here we
@@ -26,6 +35,24 @@ const METRICS = [
 export function HeroSection() {
   const heroRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
+
+  const { data } = useSWR<LandingIntelligence>(
+    '/api/public/intelligence',
+    fetcher,
+    { refreshInterval: 300000 }
+  );
+
+  const live = data?.liveIssues ?? 0;
+  const resolvedToday = data?.resolvedToday ?? 0;
+  const verified = data?.verifiedResolutions ?? 0;
+  const promises = data?.promisesTracked ?? 0;
+
+  const METRICS = [
+    { label: 'ACTIVE CIVIC ISSUES', value: live, icon: Activity, color: 'text-brand-400', prefix: '', suffix: '' },
+    { label: 'RESOLVED TODAY', value: resolvedToday, icon: CheckCircle2, color: 'text-emerald-400', prefix: '', suffix: '' },
+    { label: 'AI-VERIFIED RESOLUTIONS', value: verified, icon: Eye, color: 'text-accent-400', prefix: '', suffix: '' },
+    { label: 'PROMISES TRACKED', value: promises, icon: Target, color: 'text-violet-400', prefix: '', suffix: '' },
+  ];
 
   // Scroll-mapped hero transformation (§9): as the user scrolls away, the hero
   // copy scales down and fades while the background recedes at a slightly
@@ -207,7 +234,9 @@ export function HeroSection() {
           })}
         </motion.div>
 
-        <p className="text-center text-[10px] text-white/30 mt-4 font-mono">PROTOTYPE DATA</p>
+        <p className="text-center text-[10px] text-white/30 mt-4 font-mono">
+          LIVE DATA — DIRECT FROM THE CIVICCHAIN DATABASE
+        </p>
       </motion.div>
 
       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-white dark:from-dark-bg to-transparent pointer-events-none z-20" />

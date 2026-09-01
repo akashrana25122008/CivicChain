@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import type { EmailProviderSendVerificationRequestParams } from '@auth/core/providers/email';
+import { currentLogger } from '@/lib/server/requestContext';
 
 /** Email magic-link sender params (Auth.js beta.32). */
 export type { EmailProviderSendVerificationRequestParams };
@@ -67,7 +68,8 @@ export async function sendMagicLinkEmail(
   }
 
   devMagicLinks.set(identifier, { url, createdAt: Date.now() });
-  console.log(
-    `\n[CivicChain DEV] Magic-link for ${identifier} (no SMTP configured):\n${url}\n`,
+  currentLogger().debug(
+    { email: identifier, url },
+    '[CivicChain DEV] Magic-link (no SMTP configured)',
   );
 }

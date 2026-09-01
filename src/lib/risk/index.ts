@@ -34,11 +34,13 @@ export {
   fetchAreaRisks,
   fetchHotspots,
   fetchRiskSummary,
+  fetchWardDetail,
 } from './areas';
 
 export type {
   RiskHotspot,
   WardRiskSummary,
+  WardRiskDetail,
   RiskSummary,
   TrendResult,
   RiskQueryParams,

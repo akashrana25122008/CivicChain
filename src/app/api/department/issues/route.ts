@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/session';
 import { handleApiError } from '@/lib/server/api';
+import { withRequest } from '@/lib/server/timing';
 import { requireOwnAuthority } from '@/lib/server/dept';
 import { queryIssueList } from '@/lib/issues/query';
 
 /** Department workbench issue list — strictly scoped to the caller's own authority. */
-export async function GET(request: NextRequest) {
+export const GET = withRequest(async (request: NextRequest) => {
   try {
     const user = await requireUser();
     const authority = await requireOwnAuthority(user);
@@ -26,4 +27,4 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return handleApiError(error);
   }
-}
+});

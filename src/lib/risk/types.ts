@@ -64,10 +64,36 @@ export interface WardRiskSummary {
   repeatIssues: number;
   slaBreaches: number;
   slaAtRisk: number;
+  /** Average unresolved duration in hours across active issues (real). */
+  avgUnresolvedHours: number;
+  /** Citizen CONFIRM votes across issues in this area (real). */
+  confirmVotes: number;
+  /** Total votes across issues in this area (real). */
+  totalVotes: number;
   averageResolutionTime: number | null;
   topCategory: string;
   trend: TrendResult;
   factors: WardRiskFactor[];
+  /** Human-readable explanation of why this area has its risk level. */
+  explanation: string;
+}
+
+/** Full ward detail response for GET /api/risk/wards/:wardId. */
+export interface WardRiskDetail extends WardRiskSummary {
+  /** Recent issues driving this ward's risk score. */
+  issues: Array<{
+    id: string;
+    publicId: string;
+    title: string;
+    category: string;
+    severity: string | null;
+    status: string;
+    createdAt: Date;
+    promiseDeadline: Date | null;
+    promiseStatus: string | null;
+  }>;
+  /** Issue counts per category within this ward. */
+  categoryBreakdown: Array<{ category: string; count: number }>;
 }
 
 export interface WardRiskFactor {
@@ -111,6 +137,8 @@ export interface RiskSummary {
   overallTrend: TrendResult;
   /** Top hotspot areas. */
   topHotspots: RiskHotspot[];
+  /** ISO timestamp when this summary was (re)computed from the DB. */
+  computedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,4 +151,6 @@ export interface RiskQueryParams {
   days?: number;
   limit?: number;
   offset?: number;
+  /** Restrict to issues routed to a specific department. */
+  departmentId?: string;
 }

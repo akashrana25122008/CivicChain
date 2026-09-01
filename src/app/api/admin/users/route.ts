@@ -53,7 +53,8 @@ export async function GET(request: NextRequest) {
         take: pageSize,
         select: {
           id: true, name: true, email: true, role: true, requestedRole: true, roleStatus: true,
-          authorities: { select: { id: true, name: true, department: true } },
+          active: true,
+          authorities: { include: { department: { select: { name: true } } } },
           karmaScore: true, createdAt: true,
         },
       }),
@@ -81,7 +82,8 @@ export async function GET(request: NextRequest) {
         roleLabel: ROLE_LABELS[u.role] ?? u.role,
         requestedRole: u.requestedRole,
         roleStatus: u.roleStatus,
-        authority: u.authorities[0] ? { id: u.authorities[0].id, name: u.authorities[0].name, department: u.authorities[0].department } : null,
+        active: u.active,
+        authority: u.authorities[0] ? { id: u.authorities[0].id, name: u.authorities[0].name, department: u.authorities[0].department?.name ?? null } : null,
         karmaScore: u.karmaScore,
         createdAt: u.createdAt.toISOString(),
         timeLabel: formatRelativeTime(u.createdAt),
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest) {
       pageSize,
       pageCount: Math.ceil(total / pageSize),
       departments: await prisma.authority.findMany({
-        select: { id: true, name: true, department: true },
+        select: { id: true, name: true, department: { select: { name: true } } },
         orderBy: { name: 'asc' },
       }),
     });
@@ -104,7 +106,7 @@ export async function GET(request: NextRequest) {
 
 interface ReviewBody {
   id?: string;
-  action?: 'approve' | 'reject';
+  action?: 'approve' | 'reject' | 'deactivate' | 'activate';
   // For AUTHORITY approval: link to an existing department, or create a new one.
   authorityId?: string;
   departmentName?: string;
@@ -118,9 +120,9 @@ export async function PATCH(request: Request) {
     const body = (await request.json().catch(() => ({}))) as ReviewBody;
 
     const id = body.id;
-    if (!id || (body.action !== 'approve' && body.action !== 'reject')) {
+    if (!id || (body.action !== 'approve' && body.action !== 'reject' && body.action !== 'deactivate' && body.action !== 'activate')) {
       return NextResponse.json(
-        { error: { code: 'INVALID_INPUT', message: 'A valid id and action (approve|reject) are required.' } },
+        { error: { code: 'INVALID_INPUT', message: 'A valid id and action (approve|reject|deactivate|activate) are required.' } },
         { status: 400 },
       );
     }
@@ -131,6 +133,54 @@ export async function PATCH(request: Request) {
         { error: { code: 'NOT_FOUND', message: 'User not found.' } },
         { status: 404 },
       );
+    }
+
+    if (body.action === 'deactivate') {
+      if (target.id === admin.id) {
+        return NextResponse.json(
+          { error: { code: 'SELF_ACTION', message: 'You cannot deactivate your own account.' } },
+          { status: 400 },
+        );
+      }
+      if (!target.active) {
+        return NextResponse.json(
+          { error: { code: 'ALREADY_INACTIVE', message: 'This account is already deactivated.' } },
+          { status: 400 },
+        );
+      }
+      const updated = await prisma.user.update({
+        where: { id },
+        data: { active: false },
+      });
+      await recordAudit({
+        action: 'USER_DEACTIVATED',
+        actorId: admin.id,
+        entityType: 'User',
+        entityId: target.id,
+        metadata: { email: target.email, role: target.role },
+      });
+      return NextResponse.json({ ok: true, user: { id: updated.id, active: updated.active } });
+    }
+
+    if (body.action === 'activate') {
+      if (target.active) {
+        return NextResponse.json(
+          { error: { code: 'ALREADY_ACTIVE', message: 'This account is already active.' } },
+          { status: 400 },
+        );
+      }
+      const updated = await prisma.user.update({
+        where: { id },
+        data: { active: true },
+      });
+      await recordAudit({
+        action: 'USER_REACTIVATED',
+        actorId: admin.id,
+        entityType: 'User',
+        entityId: target.id,
+        metadata: { email: target.email, role: target.role },
+      });
+      return NextResponse.json({ ok: true, user: { id: updated.id, active: updated.active } });
     }
 
     if (body.action === 'reject') {
@@ -184,10 +234,18 @@ export async function PATCH(request: Request) {
             { status: 400 },
           );
         }
+        // Create (or reuse) the first-class Department, then link the new
+        // Authority to it — the authority's "department" is no longer a bare
+        // string (Phase 23).
+        const department = await prisma.department.upsert({
+          where: { name: deptName },
+          update: {},
+          create: { name: deptName },
+        });
         await prisma.authority.create({
           data: {
             name: deptName,
-            department: deptName,
+            departmentId: department.id,
             email: body.departmentEmail ?? target.email,
             userId: target.id,
           },

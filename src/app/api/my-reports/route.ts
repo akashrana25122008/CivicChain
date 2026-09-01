@@ -15,7 +15,10 @@ export async function GET() {
       where: { reporterId: viewer.id },
       orderBy: { createdAt: 'desc' },
       take: 200,
-      include: { authority: true, promise: true },
+      include: {
+        authority: { include: { department: { select: { name: true } } } },
+        promise: true,
+      },
     });
     return NextResponse.json({
       issues: issues.map((issue) =>

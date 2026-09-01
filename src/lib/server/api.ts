@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
+import { currentLogger } from './requestContext';
 
 /**
  * Uniform API error type. Thrown in route handlers / server logic and
@@ -45,13 +46,13 @@ export function handleApiError(error: unknown): NextResponse {
   // User input validation uses TypeError with user-safe messages (e.g. magic
   // byte / MIME / extension checks). Treat as 400, never 500.
   if (error instanceof TypeError) {
-    console.error('[api] validation error:', error.message);
+    currentLogger().warn({ err: error }, '[api] validation error');
     return NextResponse.json(
       { error: { code: 'INVALID_INPUT', message: error.message } },
       { status: 400 },
     );
   }
-  console.error('[api] unexpected error:', error);
+  currentLogger().error({ err: error }, '[api] unexpected error');
   return NextResponse.json(
     { error: { code: 'INTERNAL', message: 'Something went wrong on the server.' } },
     { status: 500 },

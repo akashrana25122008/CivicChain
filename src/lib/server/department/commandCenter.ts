@@ -120,7 +120,7 @@ export interface CommandCenterEscalation {
 }
 
 export interface CommandCenterResult {
-  authority: { name: string; department: string; jurisdiction: string | null };
+  authority: { name: string; department: string | null; jurisdiction: string | null };
   kpis: DepartmentKpis;
   queue: CommandCenterQueueItem[];
   queueTotal: number;
@@ -350,7 +350,7 @@ export interface CommandCenterParams {
 }
 
 export async function getCommandCenter(
-  params: CommandCenterParams & { authority: { name: string; department: string; jurisdiction: string | null } },
+  params: CommandCenterParams & { authority: { name: string; department: string | null; jurisdiction: string | null } },
 ): Promise<CommandCenterResult> {
   const { authorityId, authority } = params;
   const now = new Date();

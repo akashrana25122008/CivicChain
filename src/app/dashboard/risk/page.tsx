@@ -1,15 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import {
-  Activity, AlertTriangle, Radar, ShieldAlert, TrendingDown, TrendingUp, Minus,
-  MapPin, Repeat2, Clock, CheckCircle2, ChevronRight,
+  Activity, AlertTriangle, Radar, ShieldAlert, TrendingDown, TrendingUp, Minus, Search,
+  MapPin, Repeat2, Clock, CheckCircle2, X, ChevronDown, ListFilter,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { RiskHeatmap } from '@/components/dashboard/RiskHeatmap';
-import { useRiskSummary, useWardRisks, useRiskHotspots } from '@/components/dashboard/riskHooks';
+import {
+  useRiskSummary, useWardRisks, useRiskHotspots, useWardDetail,
+} from '@/components/dashboard/riskHooks';
+import useSWR from 'swr';
+import { CATEGORY_SELECT_OPTIONS } from '@/lib/issues/mapping';
 import type { WardRiskSummary } from '@/lib/risk/types';
 import type { RiskLevel } from '@/lib/risk/scoring';
 
@@ -132,7 +135,7 @@ function RiskDistribution({ summary }: { summary: NonNullable<ReturnType<typeof 
   );
 }
 
-function WardRiskTable({ wards }: { wards: WardRiskSummary[] }) {
+function WardRiskTable({ wards, onSelect }: { wards: WardRiskSummary[]; onSelect: (ward: WardRiskSummary) => void }) {
   if (wards.length === 0) {
     return (
       <div className="py-10 text-center text-neutral-500 dark:text-neutral-400">
@@ -160,8 +163,15 @@ function WardRiskTable({ wards }: { wards: WardRiskSummary[] }) {
         </thead>
         <tbody>
           {wards.map(w => (
-            <tr key={w.wardId} className="border-b border-neutral-100 dark:border-dark-border hover:bg-neutral-50 dark:hover:bg-dark-bg transition-colors">
-              <td className="py-3 pr-4 font-medium text-neutral-900 dark:text-white">{w.wardName}</td>
+            <tr
+              key={w.wardId}
+              onClick={() => onSelect(w)}
+              className="border-b border-neutral-100 dark:border-dark-border hover:bg-neutral-50 dark:hover:bg-dark-bg transition-colors cursor-pointer"
+            >
+              <td className="py-3 pr-4 font-medium text-neutral-900 dark:text-white flex items-center gap-1.5">
+                {w.wardName}
+                <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+              </td>
               <td className="py-3 pr-4">
                 <div className="flex items-center gap-2">
                   <RiskBar score={w.riskScore} level={w.riskLevel} />
@@ -196,15 +206,31 @@ function WardRiskTable({ wards }: { wards: WardRiskSummary[] }) {
 export default function RiskPage() {
   const [days, setDays] = useState<number>(30);
   const [riskLevel, setRiskLevel] = useState<string>('');
+  const [category, setCategory] = useState<string>('');
+  const [departmentId, setDepartmentId] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
+  const [selectedWard, setSelectedWard] = useState<WardRiskSummary | null>(null);
 
-  const { data: summary, isLoading: summaryLoading, error: summaryError } = useRiskSummary({ days });
-  const { data: wardsData, isLoading: wardsLoading, error: wardsError } = useWardRisks({ days, limit: 50 });
-  const { data: hotspotData, isLoading: hotspotLoading, error: hotspotError } = useRiskHotspots({ days, limit: 10 });
+  const common = { days, category: category || undefined, departmentId: departmentId || undefined };
+
+  const { data: summary, isLoading: summaryLoading, error: summaryError } = useRiskSummary(common);
+  const { data: wardsData, isLoading: wardsLoading, error: wardsError } = useWardRisks({ ...common, limit: 50 });
+  const { data: hotspotData, isLoading: hotspotLoading, error: hotspotError } = useRiskHotspots({ ...common, limit: 10 });
+  const { data: deptData } = useSWR<{ departments: Array<{ id: string; name: string }> }>(
+    '/api/risk/departments',
+    (url: string) => fetch(url).then(r => r.json()),
+    { refreshInterval: 300000 },
+  );
+  const { data: wardDetail, isLoading: detailLoading } = useWardDetail(selectedWard?.wardId ?? null, common);
 
   const wards = wardsData?.wards ?? [];
   const hotspots = hotspotData?.hotspots ?? [];
   const hasError = summaryError || wardsError || hotspotError;
   const loading = summaryLoading || wardsLoading || hotspotLoading;
+
+  const visibleWards = wards
+    .filter(w => !search.trim() || w.wardName.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(w => !riskLevel || w.riskLevel === riskLevel);
 
   return (
     <div className="p-6 md:p-8">
@@ -234,6 +260,65 @@ export default function RiskPage() {
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400">
+          <ListFilter className="w-4 h-4" /> Filter by:
+        </span>
+
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search area / ward…"
+            className="pl-9 pr-3 py-1.5 rounded-lg text-sm border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card text-neutral-900 dark:text-white placeholder:text-neutral-400 outline-none focus:border-brand-300 w-52"
+          />
+        </div>
+
+        <select
+          value={category}
+          onChange={e => setCategory(e.target.value)}
+          className="px-3 py-1.5 rounded-lg text-sm border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card text-neutral-900 dark:text-white outline-none focus:border-brand-300"
+        >
+          <option value="">All categories</option>
+          {CATEGORY_SELECT_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+
+        <select
+          value={departmentId}
+          onChange={e => setDepartmentId(e.target.value)}
+          className="px-3 py-1.5 rounded-lg text-sm border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card text-neutral-900 dark:text-white outline-none focus:border-brand-300"
+        >
+          <option value="">All departments</option>
+          {(deptData?.departments ?? []).map(d => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+
+        <span className="flex items-center gap-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 ml-1">
+          Risk level:
+        </span>
+        {[{ value: '', label: 'All' }, ...(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as RiskLevel[]).map(l => ({ value: l, label: l }))].map(f => (
+          <button
+            key={f.value || 'all'}
+            type="button"
+            onClick={() => setRiskLevel(f.value)}
+            className={cn(
+              'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
+              (riskLevel || '') === f.value
+                ? 'bg-brand-700 text-white border-brand-700 dark:bg-brand-600 dark:border-brand-600'
+                : 'bg-white dark:bg-dark-bg-card text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-dark-border',
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       {loading && !summary && <LoadingBlock />}
 
       {hasError && !summary && (
@@ -244,7 +329,17 @@ export default function RiskPage() {
         </div>
       )}
 
-      {summary && (
+      {summary && summary.totalAreas === 0 && (
+        <div className="p-10 rounded-2xl border border-dashed border-neutral-300 dark:border-dark-border flex flex-col items-center text-center">
+          <Radar className="w-10 h-10 text-neutral-300 mb-3" />
+          <p className="font-display text-lg font-semibold text-neutral-700 dark:text-neutral-300">No risk data for this selection</p>
+          <p className="text-sm text-neutral-500 mt-1">
+            Adjust the time range, category, department, or risk-level filters to see computed risk from real issue activity.
+          </p>
+        </div>
+      )}
+
+      {summary && summary.totalAreas > 0 && (
         <>
           {/* Overview cards */}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -321,76 +416,136 @@ export default function RiskPage() {
             </Card>
           </div>
 
-          {/* Risk filter */}
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Filter by level:</span>
-            {[{ value: '', label: 'All' }, ...(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as RiskLevel[]).map(l => ({ value: l, label: l }))].map(f => (
-              <button
-                key={f.value || 'all'}
-                type="button"
-                onClick={() => setRiskLevel(f.value)}
-                className={cn(
-                  'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
-                  (riskLevel || '') === f.value
-                    ? 'bg-brand-700 text-white border-brand-700 dark:bg-brand-600 dark:border-brand-600'
-                    : 'bg-white dark:bg-dark-bg-card text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-dark-border',
-                )}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
           {/* Ward risk table */}
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
-            <CardHeader className="flex items-center justify-between">
+            <CardHeader>
               <div>
                 <CardTitle as="h3" className="text-lg">Ward & Area Risk</CardTitle>
-                <CardDescription>Aggregated risk scores from real issue data</CardDescription>
+                <CardDescription className="flex items-center gap-1">
+                  Aggregated risk scores from real issue data.
+                  <span className="text-neutral-400">Click a row for the full breakdown.</span>
+                </CardDescription>
               </div>
-              <Link href="/dashboard/risk" className="text-sm text-brand-600 dark:text-brand-400 font-medium inline-flex items-center gap-1">
-                View all <ChevronRight className="w-4 h-4" />
-              </Link>
             </CardHeader>
             <CardContent>
-              <WardRiskTable wards={riskLevel ? wards.filter(w => w.riskLevel === riskLevel) : wards.slice(0, 15)} />
+              <WardRiskTable wards={visibleWards} onSelect={setSelectedWard} />
             </CardContent>
           </Card>
 
           {/* Risk explanation */}
-          <div className="mt-6 grid md:grid-cols-2 gap-4">
-            {wards.filter(w => ['HIGH', 'CRITICAL'].includes(w.riskLevel)).slice(0, 4).map(w => (
-              <Card key={w.wardId} className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
-                <CardContent>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Repeat2 className="w-4 h-4 text-brand-600 dark:text-brand-400" />
-                      <span className="font-display font-semibold text-neutral-900 dark:text-white">Why is {w.wardName} {w.riskLevel}?</span>
+          {visibleWards.length > 0 && (
+            <div className="mt-6 grid md:grid-cols-2 gap-4">
+              {visibleWards.filter(w => ['HIGH', 'CRITICAL'].includes(w.riskLevel)).slice(0, 4).map(w => (
+                <Card key={w.wardId} className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+                  <CardContent>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Repeat2 className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                        <span className="font-display font-semibold text-neutral-900 dark:text-white">Why is {w.wardName} {w.riskLevel}?</span>
+                      </div>
+                      <span className={cn('px-2 py-0.5 rounded text-xs font-bold font-mono border', LEVEL_STYLES[w.riskLevel].badge)}>
+                        {w.riskScore}
+                      </span>
                     </div>
-                    <span className={cn('px-2 py-0.5 rounded text-xs font-bold font-mono border', LEVEL_STYLES[w.riskLevel].badge)}>
-                      {w.riskScore}
-                    </span>
-                  </div>
-                  <ul className="space-y-1.5 text-sm text-neutral-700 dark:text-neutral-300">
-                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> {w.activeIncidents} active incidents</li>
-                    <li className="flex items-center gap-2"><Repeat2 className="w-4 h-4 text-orange-500 shrink-0" /> {w.repeatIssues} repeat incidents</li>
-                    <li className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-500 shrink-0" /> {w.slaBreaches} SLA breaches</li>
-                    <li className="flex items-center gap-2"><Clock className="w-4 h-4 text-neutral-500 shrink-0" /> Avg unresolved: <span className="font-medium">{formatResolutionHours(w.averageResolutionTime)}</span></li>
-                  </ul>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {w.factors
-                      .filter(f => f.score >= 50)
-                      .map(f => (
-                        <span key={f.key} className="px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300 border border-brand-100 dark:border-brand-800">
-                          {f.label} · {f.score}
-                        </span>
-                      ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">{w.explanation}</p>
+                    <ul className="space-y-1.5 text-sm text-neutral-700 dark:text-neutral-300">
+                      <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> {w.activeIncidents} active incidents</li>
+                      <li className="flex items-center gap-2"><Repeat2 className="w-4 h-4 text-orange-500 shrink-0" /> {w.repeatIssues} repeat incidents</li>
+                      <li className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-500 shrink-0" /> {w.slaBreaches} SLA breaches</li>
+                      <li className="flex items-center gap-2"><Clock className="w-4 h-4 text-neutral-500 shrink-0" /> Avg unresolved: <span className="font-medium">{formatResolutionHours(w.averageResolutionTime)}</span></li>
+                    </ul>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {w.factors
+                        .filter(f => f.score >= 50)
+                        .map(f => (
+                          <span key={f.key} className="px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300 border border-brand-100 dark:border-brand-800">
+                            {f.label} · {f.score}
+                          </span>
+                        ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </>
+      )}
+
+      {/* Ward detail side panel */}
+      {selectedWard && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelectedWard(null)}>
+          <div
+            className="w-full max-w-lg h-full bg-white dark:bg-dark-bg-card overflow-y-auto p-6"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-label={`${selectedWard.wardName} risk detail`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Ward Detail</p>
+                <h2 className="font-display text-2xl font-bold text-neutral-900 dark:text-white">{selectedWard.wardName}</h2>
+              </div>
+              <button type="button" onClick={() => setSelectedWard(null)} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-dark-bg" aria-label="Close">
+                <X className="w-5 h-5 text-neutral-500" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 mb-5">
+              <span className={cn('px-2.5 py-1 rounded-lg text-sm font-bold font-mono border', LEVEL_STYLES[selectedWard.riskLevel].badge)}>
+                {selectedWard.riskLevel}
+              </span>
+              <RiskBar score={selectedWard.riskScore} level={selectedWard.riskLevel} />
+              <span className="font-mono font-semibold text-neutral-900 dark:text-white">{selectedWard.riskScore}/100</span>
+              <TrendIndicator direction={selectedWard.trend.direction} percentage={selectedWard.trend.percentage} />
+            </div>
+
+            {detailLoading && <p className="text-sm text-neutral-500">Loading breakdown…</p>}
+            {!detailLoading && wardDetail?.ward && (
+              <>
+                <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-4">{wardDetail.ward.explanation}</p>
+
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white mb-2">Category breakdown</h3>
+                <div className="flex flex-wrap gap-1.5 mb-5">
+                  {wardDetail.ward.categoryBreakdown.map(c => (
+                    <span key={c.category} className="px-2 py-0.5 rounded-full text-xs font-medium bg-neutral-100 dark:bg-dark-bg text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-dark-border">
+                      {c.category.replace(/_/g, ' ')} · {c.count}
+                    </span>
+                  ))}
+                </div>
+
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white mb-2">Issues driving this score</h3>
+                <div className="space-y-2">
+                  {wardDetail.ward.issues.length === 0 && (
+                    <p className="text-sm text-neutral-500">No individual issues to list for this aggregation context.</p>
+                  )}
+                  {wardDetail.ward.issues.map(i => (
+                    <div key={i.id} className="rounded-xl border border-neutral-200 dark:border-dark-border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-sm text-neutral-900 dark:text-white truncate">{i.title}</span>
+                        <span className="shrink-0 font-mono text-xs text-neutral-400">{i.publicId}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500">
+                        <span>{i.category.replace(/_/g, ' ')}</span>
+                        {i.severity && (
+                          <span className={cn('px-1.5 py-0.5 rounded font-semibold border',
+                            i.severity === 'CRITICAL' && 'text-red-600 dark:text-red-400 border-red-200 dark:border-red-800',
+                            i.severity === 'HIGH' && 'text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800',
+                            i.severity === 'MEDIUM' && 'text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800',
+                            i.severity === 'LOW' && 'text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800')}>
+                            {i.severity}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {!detailLoading && !wardDetail?.ward && (
+              <p className="text-sm text-neutral-500">Detail could not be loaded for this area.</p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

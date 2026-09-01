@@ -18,6 +18,7 @@ interface AdminUser {
   roleLabel: string;
   requestedRole: string | null;
   roleStatus: string;
+  active: boolean;
   authority: { id: string; name: string; department: string } | null;
   karmaScore: number;
   createdAt: string;
@@ -55,6 +56,8 @@ export default function AdminUsers() {
   const [q, setQ] = useState('');
   const [role, setRole] = useState('');
   const [page, setPage] = useState(1);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
   const query = new URLSearchParams({ q, role, page: String(page) });
   const { data, error, isLoading, mutate } = useSWR<{ users: AdminUser[]; total: number; pageCount: number }>(
@@ -82,16 +85,27 @@ export default function AdminUsers() {
 
   const review = async (
     id: string,
-    action: 'approve' | 'reject',
+    action: 'approve' | 'reject' | 'deactivate' | 'activate',
     extra?: { authorityId?: string; departmentName?: string },
   ) => {
-    const res = await fetch('/api/admin/users', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, action, ...extra }),
-    });
-    mutate();
-    mutatePending();
+    setBusyUserId(id);
+    setActionError(null);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action, ...extra }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(body?.error?.message ?? 'Action failed.');
+        return;
+      }
+      mutate();
+      mutatePending();
+    } finally {
+      setBusyUserId(null);
+    }
   };
 
   return (
@@ -148,14 +162,21 @@ export default function AdminUsers() {
       </div>
 
       <div className="rounded-xl border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card overflow-hidden">
+        {actionError && (
+          <div className="px-4 py-3 border-b border-neutral-200 dark:border-dark-border text-sm text-red-600 dark:text-red-400">
+            {actionError}
+          </div>
+        )}
         <TableFrame
           columns={[
             { key: 'name', label: 'User' },
             { key: 'role', label: 'Role' },
+            { key: 'status', label: 'Status' },
             { key: 'reports', label: 'Reports' },
             { key: 'unread', label: 'Unread' },
             { key: 'karma', label: 'Karma' },
             { key: 'joined', label: 'Joined' },
+            { key: 'actions', label: 'Actions' },
           ]}
           isLoading={isLoading}
           error={Boolean(error)}
@@ -179,6 +200,13 @@ export default function AdminUsers() {
                 <Badge variant="status" status={ROLE_BADGE[user.role] ?? 'active'} size="sm">{user.roleLabel}</Badge>
               </td>
               <td className="px-4 py-3">
+                {user.active ? (
+                  <Badge variant="status" status="active" size="sm">Active</Badge>
+                ) : (
+                  <Badge variant="status" status="brokenPromise" size="sm">Deactivated</Badge>
+                )}
+              </td>
+              <td className="px-4 py-3">
                 <span className="font-mono text-sm text-neutral-800 dark:text-neutral-200">{user.reportsCount}</span>
               </td>
               <td className="px-4 py-3">
@@ -189,6 +217,24 @@ export default function AdminUsers() {
               </td>
               <td className="px-4 py-3 whitespace-nowrap">
                 <span className="text-xs text-neutral-500">{user.timeLabel}</span>
+              </td>
+              <td className="px-4 py-3">
+                <Button
+                  size="sm"
+                  variant={user.active ? 'ghost' : 'secondary'}
+                  disabled={busyUserId === user.id}
+                  onClick={() => review(user.id, user.active ? 'deactivate' : 'activate')}
+                  className={user.active ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}
+                >
+                  {busyUserId === user.id ? (
+                    <Check className="w-3.5 h-3.5 mr-1" style={{ opacity: 0.4 }} />
+                  ) : user.active ? (
+                    <X className="w-3.5 h-3.5 mr-1" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  {user.active ? 'Deactivate' : 'Reactivate'}
+                </Button>
               </td>
             </tr>
           ))}

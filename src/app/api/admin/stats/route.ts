@@ -7,10 +7,11 @@ import { prisma } from '@/lib/db';
 export async function GET() {
   try {
     await requireRole('ADMIN');
-    const [users, citizens, authorities, issues, resolved, activeIssues, issuesByStatus, auditLogs, notifications, escalations, verifiedEvidence, pendingEvidence] = await Promise.all([
+    const [users, citizens, authorities, departments, issues, resolved, activeIssues, issuesByStatus, auditLogs, notifications, escalations, verifiedEvidence, pendingEvidence] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { role: 'CITIZEN' } }),
       prisma.authority.count(),
+      prisma.department.count(),
       prisma.issue.count(),
       prisma.issue.count({ where: { status: 'RESOLVED' } }),
       prisma.issue.count({ where: { status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'VERIFIED', 'ASSIGNED', 'IN_PROGRESS'] } } }),
@@ -18,7 +19,7 @@ export async function GET() {
         by: ['status'],
         _count: { _all: true },
       }),
-      prisma.auditLog.count(),
+      prisma.auditEvent.count(),
       prisma.notification.count(),
       prisma.escalation.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
       prisma.verification.count({ where: { status: 'VERIFIED' } }),
@@ -29,6 +30,7 @@ export async function GET() {
         users,
         citizens,
         authorities,
+        departments,
         issues,
         resolved,
         activeIssues,

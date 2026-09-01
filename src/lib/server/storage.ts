@@ -71,9 +71,9 @@ function safeExtension(name: string): string {
 }
 
 async function loadS3Client(): Promise<
-  { client: import('@aws-sdk/client-s3').S3Client; PutObjectCommand: typeof import('@aws-sdk/client-s3').PutObjectCommand; GetObjectCommand: typeof import('@aws-sdk/client-s3').GetObjectCommand; DeleteObjectCommand: typeof import('@aws-sdk/client-s3').DeleteObjectCommand }
+  { client: import('@aws-sdk/client-s3').S3Client; PutObjectCommand: typeof import('@aws-sdk/client-s3').PutObjectCommand; GetObjectCommand: typeof import('@aws-sdk/client-s3').GetObjectCommand; DeleteObjectCommand: typeof import('@aws-sdk/client-s3').DeleteObjectCommand; HeadBucketCommand: typeof import('@aws-sdk/client-s3').HeadBucketCommand }
 > {
-  const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } =
+  const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadBucketCommand } =
     await import('@aws-sdk/client-s3');
   const cfg = getS3Config();
   const client = new S3Client({
@@ -82,7 +82,7 @@ async function loadS3Client(): Promise<
     forcePathStyle: cfg.forcePathStyle,
     credentials: { accessKeyId: cfg.accessKey, secretAccessKey: cfg.secretKey },
   });
-  return { client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand };
+  return { client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadBucketCommand };
 }
 
 /** Persists an uploaded object and returns its stable key + metadata. */
@@ -176,4 +176,44 @@ export async function deleteEvidenceFile(key: string): Promise<void> {
 /** True when the object-storage backend is active (used for health checks). */
 export function storageBackend(): 's3' | 'local' {
   return s3Configured() ? 's3' : 'local';
+}
+
+export interface StorageProbeResult {
+  backend: 's3' | 'local';
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Honestly probes the active backend instead of assuming readiness:
+ * - S3: performs a real HeadBucket against the configured bucket.
+ * - Local: verifies the storage directory can be listed/created.
+ */
+export async function probeStorageHealth(): Promise<StorageProbeResult> {
+  if (s3Configured()) {
+    try {
+      const { client, HeadBucketCommand } = await loadS3Client();
+      const cfg = getS3Config();
+      await client.send(new HeadBucketCommand({ Bucket: cfg.bucket }));
+      return { backend: 's3', ok: true };
+    } catch (err) {
+      return {
+        backend: 's3',
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  try {
+    const dir = process.env.EVIDENCE_STORAGE_DIR || 'private/uploads';
+    await mkdir(dir, { recursive: true });
+    return { backend: 'local', ok: true };
+  } catch (err) {
+    return {
+      backend: 'local',
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

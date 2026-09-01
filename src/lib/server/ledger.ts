@@ -25,7 +25,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 async function latestRow(db: LedgerDb): Promise<{ seq: number; hash: string } | null> {
-  const latest = await db.auditLog.findFirst({
+  const latest = await db.auditEvent.findFirst({
     orderBy: { seq: 'desc' },
     select: { seq: true, hash: true },
   });
@@ -46,7 +46,7 @@ async function appendOnce(db: LedgerDb, input: LedgerInput): Promise<void> {
     prevHash,
   });
 
-  await db.auditLog.create({
+  await db.auditEvent.create({
     data: {
       actorId: input.actorId ?? null,
       issueId: input.issueId ?? null,
@@ -91,7 +91,7 @@ export async function getLedgerVerification(): Promise<{
   depth: number;
   tipAt: string | null;
 }> {
-  const rows = await prisma.auditLog.findMany({
+  const rows = await prisma.auditEvent.findMany({
     orderBy: { seq: 'asc' },
     select: {
       id: true,

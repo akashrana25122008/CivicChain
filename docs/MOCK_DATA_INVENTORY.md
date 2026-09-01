@@ -273,7 +273,39 @@ Everything else in the inventory above remains unchanged and deferred (P1–P3).
 
 ---
 
-## Summary by category
+## Phase 25 — final reconciliation (production readiness)
+
+Phase 25 audited every entry against the live source tree. The Phase 0 rows
+above are preserved as historical record; the table below is the **current
+source of truth** and supersedes all earlier "remains mocked" notes.
+
+| Entry | Phase 25 status | Evidence (current tree) |
+| ----- | --------------- | ----------------------- |
+| #1 Report AI analysis | **REAL** | `/report` submits multipart to `POST /api/issues`; AI runs async server-side (`src/lib/server/intelligence/ai/analysis.ts`) |
+| #2 Issue catalogue | **REAL** | `dashboard/issues/page.tsx` → `GET /api/issues` (DB issues) |
+| #3 Dashboard overview KPIs | **REAL** | `CitizenDashboard.tsx` → `/api/citizen/summary`, `/api/my-reports`, `/api/issues`, `/api/notifications`, `/api/risk/summary`; no hardcoded counts |
+| #4 Issue detail (+#18 timeline) | **REAL** | `GET /api/issues/[id]` honors `params.id`; timeline from `AuditLog`; `IssueDetailView.tsx` |
+| #5 Evidence upload slots | **REAL** | `/api/issues/[id]/evidence` multipart → private storage → authorized `/api/evidence/[id]/file` |
+| #6 Promises page | **REAL** | `dashboard/promises/page.tsx` → `/api/my-promises` + SLA aggregation |
+| #7 Escalations page | **REAL** | `dashboard/escalations/page.tsx` → `/api/my-escalations` |
+| #8 Verification page | **REAL** | `dashboard/verification/page.tsx` → `/api/my-verifications` |
+| #9 Risk page | **REAL** | `dashboard/risk/page.tsx` → `/api/risk/summary`, `/api/risk/wards`, `/api/risk/hotspots`, `/api/risk/wards/[wardId]` (detail panel), `/api/risk/departments` (filter feed); hotspots carry real aggregate values |
+| #10 Community page | **REAL** | `dashboard/community/page.tsx` → `/api/community/feedback` |
+| #11 Settings page | **REAL** | `dashboard/settings/page.tsx` → `/api/me` (persisted preferences, Phase 14) |
+| #12 Map + landing map | **REAL** | `/api/map` (role-scoped) + `/api/map/public` (anonymous, sanitized); heatmap layer in `CivicMapInner.tsx` |
+| #13 Civic globe | **REAL** | `CivicGlobe.tsx` — `MOCK_ISSUES` removed; prop-driven via `toIssueMarker()` from `/api/map/public` |
+| #14 Predictive intelligence (landing) | **REAL KPIs / PROTOTYPE VISUAL** | live risk cards → `/api/public/risks`; the staged `RiskZoneDemo` animation remains a labeled prototype visual (no fabricated live claims) |
+| #15 Promise ledger (landing) | **PROTOTYPE VISUAL** | `PromiseLedgerSection` countdown is a labeled `DEMO`/simulated visual; live landing stats come from `/api/public/intelligence` |
+| #16 Broken promise (landing) | **PROTOTYPE VISUAL** | `BrokenPromiseSection` example story is a labeled demo fixture |
+| #17 Features demos (landing) | **PROTOTYPE VISUAL** | timed animations with labeled demo figures (badge `AI ANALYSIS — PROTOTYPE`) |
+
+**Bottom line:** every authenticated surface is DB-backed. The only remaining
+hardcoded/fixture content is on the **public landing page** (#14/#15/#16/#17)
+and is explicitly labeled as a demonstration/prototype visual — it never
+presents fabricated live statistics (live landing KPIs are real). Removing these
+requires a redesign decision on the marketing page, not a data-pipeline fix.
+
+## Summary by category (Phase 0 record)
 
 | Category                                  | Entries                                        |
 | ----------------------------------------- | ---------------------------------------------- |

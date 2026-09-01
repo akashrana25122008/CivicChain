@@ -7,6 +7,7 @@ import { queryIssueList } from '@/lib/issues/query';
 import { serializeIssueDetail } from '@/lib/issues/serialize';
 import { storeEvidenceFile, deleteEvidenceFile } from '@/lib/server/storage';
 import { assertValidEvidenceFile } from '@/lib/validation/evidence';
+import { sanitizeUpload } from '@/lib/security/fileScan';
 import { createReportSchema } from '@/lib/validation/report';
 import { transitionIssue, allowedTransitionsFor } from '@/lib/issues/transition';
 import { runReportIntelligence, ensureReportIntelligence } from '@/lib/server/intelligence/pipeline';
@@ -112,13 +113,18 @@ export async function createReportHttp(request: NextRequest): Promise<NextRespon
       const file = fileEntries[i];
       // Server-side validation: magic bytes, declared MIME, extension, size,
       // structure. A rejected file raises a user-safe error BEFORE storage.
-      const { mimeType } = assertValidEvidenceFile({
+      const { mimeType, detected } = assertValidEvidenceFile({
         buffer: buffers[i],
         originalName: file.name,
         declaredMime: file.type,
       });
+      // Phase 21: malware/polyglot scan + image metadata (EXIF/GPS) stripping.
+      const sanitized = await sanitizeUpload({ buffer: buffers[i], kind: detected });
+      if (!sanitized.clean) {
+        throw new ApiError(400, 'FILE_REJECTED', sanitized.reason ?? 'File failed security scan.');
+      }
       const stored = await storeEvidenceFile({
-        buffer: buffers[i],
+        buffer: sanitized.buffer,
         mimeType,
         originalName: file.name,
       });
@@ -238,7 +244,7 @@ async function authorizeReportDetail(viewer: User, issue: {
 }
 
 const ISSUE_INCLUDE = {
-  authority: true,
+  authority: { include: { department: { select: { name: true } } } },
   promise: true,
   evidence: {
     orderBy: { createdAt: 'asc' as const },
@@ -249,13 +255,14 @@ const ISSUE_INCLUDE = {
       },
     },
   },
-  auditLogs: { orderBy: { createdAt: 'asc' as const } },
+  auditEvents: { orderBy: { createdAt: 'asc' as const } },
   aiAnalysis: true,
   incident: {
     include: {
       issues: { select: { id: true, publicId: true, status: true } },
     },
   },
+  votes: { select: { type: true } },
 } as const;
 
 /** GET /api/reports/[id] — ownership/RBAC-enforced detail. */
@@ -275,7 +282,7 @@ export async function getReportDetailHttp(request: NextRequest, id: string): Pro
         authority: issue.authority,
         promise: issue.promise,
         evidence: issue.evidence,
-        auditLogs: issue.auditLogs,
+        auditEvents: issue.auditEvents,
         viewerId: viewer.id,
         revealContact: viewer.role === 'ADMIN' || viewer.role === 'AUTHORITY',
         allowedTransitions: await allowedTransitionsFor(viewer, issue),
@@ -333,7 +340,7 @@ export async function patchReportHttp(request: NextRequest, id: string): Promise
         authority: updated.authority,
         promise: updated.promise,
         evidence: updated.evidence,
-        auditLogs: updated.auditLogs,
+        auditEvents: updated.auditEvents,
         viewerId: actor.id,
         revealContact: actor.role === 'ADMIN' || actor.role === 'AUTHORITY',
         allowedTransitions: await allowedTransitionsFor(actor, updated),

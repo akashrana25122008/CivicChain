@@ -7,6 +7,8 @@
  * nothing waits to "look" like AI processing.
  */
 
+import { getRequestContext } from '../../requestContext';
+
 export interface AiCallInput {
   baseUrl: string;
   apiKey: string;
@@ -104,9 +106,17 @@ export async function chatCompletionWithRetry(
   let lastError: unknown = null;
   const attempts = maxRetries + 1;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const attemptStart = performance.now();
     try {
-      return await rawChatCompletion(input);
+      const content = await rawChatCompletion(input);
+      const durationMs = Math.round(performance.now() - attemptStart);
+      getRequestContext()
+        ?.logger?.info({ ai: true, model: input.model, durationMs, attempt: attempt + 1, ok: true }, 'ai call');
+      return content;
     } catch (err) {
+      const durationMs = Math.round(performance.now() - attemptStart);
+      getRequestContext()
+        ?.logger?.warn({ ai: true, model: input.model, durationMs, attempt: attempt + 1, ok: false }, 'ai call failed');
       lastError = err;
       const retryable = err instanceof AiServiceError && err.retryable;
       if (!retryable || attempt === attempts - 1) throw err;

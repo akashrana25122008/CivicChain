@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import useSWR from 'swr';
-import { Building2 } from 'lucide-react';
+import { Building2, Plus, X, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/dashboard/PageHeader';
 import { TableFrame } from '@/components/dashboard/TableFrame';
@@ -40,6 +41,36 @@ export default function AdminDepartments() {
     { refreshInterval: 30000 },
   );
 
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ name: '', jurisdiction: '', authorityName: '', authorityEmail: '' });
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
+
+  const submitCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    setFormError(null);
+    setFormSuccess(null);
+    try {
+      const res = await fetch('/api/admin/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error?.message ?? 'Creation failed.');
+      setForm({ name: '', jurisdiction: '', authorityName: '', authorityEmail: '' });
+      setFormSuccess(`Department "${body.department.name}" created.`);
+      setShowCreate(false);
+      mutate();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Creation failed.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader
@@ -47,6 +78,74 @@ export default function AdminDepartments() {
         title="Departments"
         description="Authorities across the platform with live workload: assigned, active, resolved, escalations and resolution time."
       />
+
+      <div className="mb-6 flex items-center justify-between gap-4">
+        {formSuccess && (
+          <span className="text-sm text-emerald-600 dark:text-emerald-400">{formSuccess}</span>
+        )}
+        <button
+          onClick={() => { setShowCreate((s) => !s); setFormError(null); }}
+          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+        >
+          {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {showCreate ? 'Cancel' : 'New department'}
+        </button>
+      </div>
+
+      {showCreate && (
+        <form onSubmit={submitCreate} className="mb-6 p-6 rounded-2xl border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card">
+          <p className="text-sm font-semibold text-neutral-900 dark:text-white mb-4">Create a department</p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-500">Department name *</span>
+              <input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+                placeholder="e.g. Water & Sanitation Department"
+                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-500">Jurisdiction</span>
+              <input
+                value={form.jurisdiction}
+                onChange={(e) => setForm({ ...form, jurisdiction: e.target.value })}
+                placeholder="e.g. Ward 4, Ward 5"
+                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-500">Authority name</span>
+              <input
+                value={form.authorityName}
+                onChange={(e) => setForm({ ...form, authorityName: e.target.value })}
+                placeholder="e.g. City Water Works"
+                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-500">Authority email</span>
+              <input
+                type="email"
+                value={form.authorityEmail}
+                onChange={(e) => setForm({ ...form, authorityEmail: e.target.value })}
+                placeholder="ops@city.gov"
+                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+          {formError && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{formError}</p>}
+          <button
+            type="submit"
+            disabled={creating}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+          >
+            {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+            {creating ? 'Creating…' : 'Create department'}
+          </button>
+        </form>
+      )}
 
       <div className="rounded-xl border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card overflow-hidden">
         <TableFrame

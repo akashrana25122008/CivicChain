@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -19,16 +20,73 @@ import {
   Loader2,
   File,
   GitMerge,
+  ThumbsUp,
+  MessageSquare,
 } from 'lucide-react';
 import type { ApiIssueResponse } from '@/lib/issues/types';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+type VoteAction = 'CONFIRM' | 'SUPPORT' | 'DISPUTE';
+const VOTE_LABEL: Record<VoteAction, string> = {
+  CONFIRM: 'Confirm fix',
+  SUPPORT: 'Support',
+  DISPUTE: 'Dispute',
+};
 
 export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string }) {
   const { data, isLoading, error, mutate } = useSWR<ApiIssueResponse>(
     `${endpoint}/${id}`,
     fetcher,
     { refreshInterval: 30000 },
+  );
+
+  const [verifying, setVerifying] = useState(false);
+  const [casting, setCasting] = useState<VoteAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const runVerify = useCallback(
+    async (outcome: 'VERIFIED' | 'DISPUTED') => {
+      setVerifying(true);
+      setActionError(null);
+      try {
+        const res = await fetch(`/api/issues/${id}/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ outcome }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body?.error?.message ?? 'Verification failed.');
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : 'Verification failed.');
+      } finally {
+        setVerifying(false);
+        mutate();
+      }
+    },
+    [id, mutate],
+  );
+
+  const castVote = useCallback(
+    async (type: VoteAction) => {
+      setCasting(type);
+      setActionError(null);
+      try {
+        const res = await fetch(`/api/issues/${id}/votes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body?.error?.message ?? 'Vote failed.');
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : 'Vote failed.');
+      } finally {
+        setCasting(null);
+        mutate();
+      }
+    },
+    [id, mutate],
   );
 
   if (isLoading && !data) {
@@ -414,19 +472,106 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
             </CardContent>
           </Card>
 
+          {issue.canVerify && (
+            <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+              <CardHeader>
+                <CardTitle as="h2" className="text-lg flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  Resolution Confirmation
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                  This report is marked resolved. Please confirm the problem is actually fixed — or dispute it to reopen the report.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={verifying}
+                    onClick={() => runVerify('VERIFIED')}
+                  >
+                    {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
+                    Confirm fixed
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-600 dark:text-red-400"
+                    disabled={verifying}
+                    onClick={() => runVerify('DISPUTED')}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 mr-1" />
+                    Dispute
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader>
               <CardTitle as="h2" className="text-lg">Community Verification</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="p-4 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-neutral-400 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Community verification is a <strong>future phase</strong>. The baseline&apos;s placeholder percentages were removed and are not simulated.
+              {issue.voteSummary.total === 0 ? (
+                <div className="p-4 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border flex items-start gap-3">
+                  <MapPin className="w-5 h-5 text-neutral-400 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    No community votes have been cast on this report yet. Votes are a real, authenticated evidence signal.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+                  {[
+                    { label: 'Confirmed', value: issue.voteSummary.confirm, cls: 'text-emerald-600 dark:text-emerald-400' },
+                    { label: 'Supported', value: issue.voteSummary.support, cls: 'text-amber-600 dark:text-amber-400' },
+                    { label: 'Disputed', value: issue.voteSummary.dispute, cls: 'text-red-600 dark:text-red-400' },
+                  ].map((s) => (
+                    <div key={s.label} className="p-3 rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border">
+                      <p className={cn('text-2xl font-display font-bold', s.cls)}>{s.value}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-neutral-500 mt-0.5">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {actionError && (
+                <div className="mb-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300">
+                  {actionError}
+                </div>
+              )}
+
+              {!issue.byCurrentUser && issue.voteSummary.total >= 0 ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {(['CONFIRM', 'SUPPORT', 'DISPUTE'] as VoteAction[]).map((type) => (
+                    <Button
+                      key={type}
+                      size="sm"
+                      variant="outline"
+                      disabled={casting != null}
+                      onClick={() => castVote(type)}
+                    >
+                      {casting === type ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                      ) : type === 'CONFIRM' ? (
+                        <ThumbsUp className="w-3.5 h-3.5 mr-1" />
+                      ) : type === 'SUPPORT' ? (
+                        <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                      ) : (
+                        <AlertTriangle className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      {VOTE_LABEL[type]}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-500 italic">
+                  Reporters verify their own resolution via the confirmation step instead of voting.
                 </p>
-              </div>
+              )}
               <p className="text-xs text-neutral-500 mt-4 italic">
-                Community feedback is an additional evidence layer and does not replace formal administrative verification.
+                Community votes are an additional evidence layer and never replace formal administrative verification.
               </p>
             </CardContent>
           </Card>

@@ -124,6 +124,7 @@ export default function AdminIssues() {
         endpoint={selected ? `/api/issues/${selected}` : null}
         onClose={() => setSelected(null)}
         onChanged={mutate}
+        canUpdateStatus
       />
     </div>
   );

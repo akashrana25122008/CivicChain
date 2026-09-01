@@ -2,79 +2,57 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion, useInView } from 'framer-motion';
+import useSWR from 'swr';
 import { Card, CardContent } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
-import { TrendingUp, Droplets, Trash2, Construction, CloudRain, ClipboardList, ShieldAlert, Radio, RotateCw } from 'lucide-react';
+import {
+  TrendingUp, Droplets, Trash2, Construction, CloudRain,
+  ClipboardList, ShieldAlert, Radio, RotateCw, Zap, Wrench,
+} from 'lucide-react';
 import { DUR, EASE } from '@/lib/motion';
 
-const RISKS = [
-  {
-    ward: 'WARD 17',
-    type: 'Waterlogging Risk',
-    level: 'HIGH',
-    levelColor: 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800',
-    icon: Droplets,
-    iconColor: 'text-blue-500',
-    historical: 84,
-    signal: 'High',
-    signalColor: 'text-red-500',
-    trend: '+32%',
-    trendColor: 'text-red-500',
-  },
-  {
-    ward: 'WARD 4',
-    type: 'Drain Blockage Risk',
-    level: 'HIGH',
-    levelColor: 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800',
-    icon: CloudRain,
-    iconColor: 'text-cyan-500',
-    historical: 67,
-    signal: 'Elevated',
-    signalColor: 'text-amber-500',
-    trend: '+18%',
-    trendColor: 'text-amber-500',
-  },
-  {
-    ward: 'WARD 12',
-    type: 'Road Damage Risk',
-    level: 'MEDIUM',
-    levelColor: 'text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-800',
-    icon: Construction,
-    iconColor: 'text-amber-500',
-    historical: 45,
-    signal: 'Moderate',
-    signalColor: 'text-amber-500',
-    trend: '+8%',
-    trendColor: 'text-emerald-500',
-  },
-  {
-    ward: 'WARD 8',
-    type: 'Garbage Accumulation Risk',
-    level: 'HIGH',
-    levelColor: 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800',
-    icon: Trash2,
-    iconColor: 'text-emerald-500',
-    historical: 92,
-    signal: 'High',
-    signalColor: 'text-red-500',
-    trend: '+24%',
-    trendColor: 'text-red-500',
-  },
-  {
-    ward: 'WARD 21',
-    type: 'Infrastructure Stress',
-    level: 'MEDIUM',
-    levelColor: 'text-amber-600 bg-amber-50 border border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-800',
-    icon: TrendingUp,
-    iconColor: 'text-violet-500',
-    historical: 56,
-    signal: 'Moderate',
-    signalColor: 'text-amber-500',
-    trend: '+12%',
-    trendColor: 'text-amber-500',
-  },
-];
+interface PublicRiskZone {
+  wardId: string;
+  wardName: string;
+  riskScore: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  activeIncidents: number;
+  totalIncidents: number;
+  topCategory: string;
+  averageResolutionTime: number | null;
+  trend: { direction: string; percentage: number };
+}
+
+interface PublicRisksResponse {
+  risks: PublicRiskZone[];
+  generatedAt: string;
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+const LEVEL_COLOR: Record<string, string> = {
+  CRITICAL: 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800',
+  HIGH: 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800',
+  MEDIUM: 'text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-800',
+  LOW: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-800',
+};
+
+const CATEGORY_META: Record<string, { icon: typeof Droplets; iconColor: string; type: string }> = {
+  WATER: { icon: Droplets, iconColor: 'text-blue-500', type: 'Water Risk' },
+  DRAINAGE: { icon: CloudRain, iconColor: 'text-cyan-500', type: 'Drainage Risk' },
+  POTHOLE: { icon: Wrench, iconColor: 'text-amber-500', type: 'Pothole Risk' },
+  INFRASTRUCTURE: { icon: Construction, iconColor: 'text-amber-500', type: 'Infrastructure Risk' },
+  GARBAGE: { icon: Trash2, iconColor: 'text-emerald-500', type: 'Sanitation Risk' },
+  STREETLIGHT: { icon: Zap, iconColor: 'text-yellow-500', type: 'Lighting Risk' },
+  OTHER: { icon: TrendingUp, iconColor: 'text-violet-500', type: 'Civic Risk' },
+};
+
+const DEFAULT_CATEGORY = { icon: TrendingUp, iconColor: 'text-violet-500', type: 'Civic Risk' };
+
+function metaForCategory(category: string) {
+  return CATEGORY_META[category] ?? DEFAULT_CATEGORY;
+}
 
 const NEXT_SCAN = 15;
 
@@ -627,6 +605,12 @@ function RiskZoneDemo() {
 export function PredictiveIntelligenceSection() {
   const reduce = useReducedMotion();
 
+  const { data, error } = useSWR<PublicRisksResponse>('/api/public/risks', fetcher, {
+    refreshInterval: 300000,
+  });
+
+  const risks = data?.risks ?? [];
+
   return (
     <section className="py-20 md:py-32 theme-tint dark:bg-dark-bg" id="predictive">
       <div className="max-w-[1400px] mx-auto px-4 md:px-6 lg:px-8">
@@ -651,64 +635,82 @@ export function PredictiveIntelligenceSection() {
 
         <RiskZoneDemo />
 
+        {error && (
+          <p className="mb-8 text-center text-sm text-amber-600 dark:text-amber-400">
+            Live risk zones are temporarily unavailable. Check back shortly.
+          </p>
+        )}
+
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {RISKS.map((risk, i) => {
-            const Icon = risk.icon;
-            return (
-              <motion.div
-                key={risk.ward + risk.type}
-                initial={reduce ? false : { opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.2 }}
-                transition={{ duration: DUR.section, delay: i * 0.06, ease: EASE.out }}
-              >
-                <Card
-                  variant="elevated"
-                  className="p-6 bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border hover:-translate-y-1 hover:shadow-xl transition-all duration-300 hover:border-violet-300 dark:hover:border-violet-700"
+          {risks.length === 0 && !error ? (
+            <div className="col-span-full p-10 text-center rounded-2xl border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                No risk zones detected yet. As citizens submit reports across the city, high-risk areas will appear here.
+              </p>
+            </div>
+          ) : (
+            risks.map((risk, i) => {
+              const meta = metaForCategory(risk.topCategory);
+              const Icon = meta.icon;
+              const dir = risk.trend.direction === 'UP' ? '+' : risk.trend.direction === 'DOWN' ? '−' : '→';
+              return (
+                <motion.div
+                  key={risk.wardId}
+                  initial={reduce ? false : { opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.2 }}
+                  transition={{ duration: DUR.section, delay: i * 0.06, ease: EASE.out }}
                 >
-                  <CardContent>
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-xs font-mono text-neutral-500 tracking-wider">{risk.ward}</span>
-                      <span className={cn('px-2 py-1 rounded text-xs font-bold font-mono border', risk.levelColor)}>
-                        {risk.level}
-                      </span>
-                    </div>
+                  <Card
+                    variant="elevated"
+                    className="p-6 bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border hover:-translate-y-1 hover:shadow-xl transition-all duration-300 hover:border-violet-300 dark:hover:border-violet-700"
+                  >
+                    <CardContent>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-xs font-mono text-neutral-500 tracking-wider">{risk.wardName}</span>
+                        <span className={cn('px-2 py-1 rounded text-xs font-bold font-mono border', LEVEL_COLOR[risk.riskLevel] ?? LEVEL_COLOR.MEDIUM)}>
+                          {risk.riskLevel}
+                        </span>
+                      </div>
 
-                    <motion.div
-                      className="flex items-center gap-3 mb-4"
-                      whileHover={reduce ? undefined : { scale: 1.03 }}
-                      transition={{ duration: DUR.fast, ease: EASE.out }}
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-dark-border flex items-center justify-center">
-                        <Icon className={cn('w-5 h-5', risk.iconColor)} />
-                      </div>
-                      <h3 className="font-display text-lg font-semibold text-neutral-900 dark:text-white">{risk.type}</h3>
-                    </motion.div>
+                      <motion.div
+                        className="flex items-center gap-3 mb-4"
+                        whileHover={reduce ? undefined : { scale: 1.03 }}
+                        transition={{ duration: DUR.fast, ease: EASE.out }}
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-dark-border flex items-center justify-center">
+                          <Icon className={cn('w-5 h-5', meta.iconColor)} />
+                        </div>
+                        <h3 className="font-display text-lg font-semibold text-neutral-900 dark:text-white">{meta.type}</h3>
+                      </motion.div>
 
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-neutral-500">Historical Reports</span>
-                        <AnimatedNumber value={risk.historical} delay={0.4} className="font-mono font-medium text-neutral-900 dark:text-white" />
+                      <div className="space-y-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-neutral-500">Risk Score</span>
+                          <AnimatedNumber value={risk.riskScore} delay={0.4} className="font-mono font-medium text-neutral-900 dark:text-white" />
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-neutral-500">Active Reports</span>
+                          <span className="font-mono font-medium text-neutral-900 dark:text-white">{risk.activeIncidents}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-neutral-500">30-Day Trend</span>
+                          <span className={cn('font-mono font-medium', risk.trend.percentage >= 0 ? 'text-red-500' : 'text-emerald-500')}>
+                            {dir}{Math.abs(risk.trend.percentage)}%
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-neutral-500">Environmental Signal</span>
-                        <span className={cn('font-mono font-medium', risk.signalColor)}>{risk.signal}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-neutral-500">Drainage Complaints</span>
-                        <span className={cn('font-mono font-medium', risk.trendColor)}>{risk.trend}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })
+          )}
         </div>
 
         <div className="mt-12 max-w-3xl mx-auto p-6 rounded-2xl bg-neutral-50 dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
           <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed text-center">
-            <strong>Important:</strong> Predictive intelligence uses language such as <em>predictive model</em>, <em>risk signal</em>, and <em>geospatial analysis</em>. This is prototype intelligence, not real-time prediction. Actual accuracy depends on data quality and model validation.
+            <strong>Important:</strong> Risk zones shown above are computed from live CivicChain data — reported issues, severity, SLA breaches, and repeat incidents per ward. They are decision-support signals, not guarantees of future events.
           </p>
         </div>
       </div>

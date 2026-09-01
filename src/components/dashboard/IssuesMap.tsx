@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
+import { REGION_CITY } from '@/lib/city';
 import type { IssueMapMarker } from './IssuesMapInner';
 
 const IssuesMapInner = dynamic(() =>
@@ -20,7 +21,7 @@ export type { IssueMapMarker };
 export function IssuesMap({
   issues,
   className,
-  defaultCenter = [78.0322, 27.4924], // Mathura, Uttar Pradesh (regional default)
+  defaultCenter = REGION_CITY.center,
   defaultZoom = 10,
 }: {
   issues: IssueMapMarker[];

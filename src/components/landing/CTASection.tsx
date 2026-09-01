@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
-import { AuthActions } from './AuthActions';
-import { ArrowRight, FileText, BarChart3 } from 'lucide-react';
+import { ArrowRight, UserPlus, FileText, BarChart3 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { DUR, EASE } from '@/lib/motion';
 
 export function CTASection() {
@@ -48,7 +48,21 @@ export function CTASection() {
             viewport={{ once: true, amount: 0.4 }}
             transition={{ duration: DUR.section, delay: 0.25, ease: EASE.out }}
           >
-            <AuthActions />
+            <Link
+  href="/register"
+  className={cn(
+    'group inline-flex items-center justify-center gap-3 px-6 py-3.5',
+    'rounded-2xl bg-white/10 dark:bg-white/5 backdrop-blur-xl',
+    'border border-brand-400/30 dark:border-brand-500/30',
+    'shadow-xl hover:shadow-2xl transition-all duration-300',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-bg',
+    'hover:-translate-y-1 active:translate-y-0.5',
+  )}
+>
+  <UserPlus className="w-5 h-5 text-brand-300 dark:text-brand-400" />
+  <span className="font-medium text-lg text-white">Sign Up</span>
+  <ArrowRight className="w-5 h-5 text-brand-300 dark:text-brand-400 transition-transform duration-200 group-hover:translate-x-1" />
+</Link>
           </motion.div>
 
           <motion.div

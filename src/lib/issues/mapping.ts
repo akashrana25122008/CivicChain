@@ -108,6 +108,26 @@ export function getAuthorityDepartmentForCategory(
   return DEPARTMENT_BY_CATEGORY[category] ?? null;
 }
 
+/**
+ * Deterministic initial severity per category (dev-order Phase 1: every report
+ * gets category + severity + department at creation, before any async AI run).
+ * The AI analysis may later refine this value; the creation-time default
+ * guarantees SLA/priority/risk always have a real severity from the first write.
+ */
+export const DEFAULT_SEVERITY_BY_CATEGORY: Record<IssueCategory, Severity> = {
+  POTHOLE: 'LOW',
+  DRAINAGE: 'MEDIUM',
+  STREETLIGHT: 'LOW',
+  GARBAGE: 'LOW',
+  INFRASTRUCTURE: 'MEDIUM',
+  WATER: 'HIGH',
+  OTHER: 'LOW',
+};
+
+export function defaultSeverityForCategory(category: IssueCategory): Severity {
+  return DEFAULT_SEVERITY_BY_CATEGORY[category] ?? 'LOW';
+}
+
 // --- Phase 3+4 — AI classification + priority display vocabularies ---------
 // Keys are literals, so these stay client-bundle safe (type-only import).
 

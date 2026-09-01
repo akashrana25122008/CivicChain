@@ -9,6 +9,7 @@
  */
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/server/audit';
+import { createNotification } from '@/lib/server/notify';
 import { readEvidenceFile } from '@/lib/server/storage';
 import { intelligenceConfig } from '@/lib/server/intelligence/config';
 import { chatCompletionWithRetry } from '@/lib/server/intelligence/ai/client';
@@ -170,9 +171,12 @@ export async function runAiAnalysis(issueId: string): Promise<void> {
     const issueCategory = AI_CATEGORY_TO_ISSUE[aiCategory];
     const severity = aiSeverityToIssueSeverity(output.severity);
 
-    const department = getAuthorityDepartmentForCategory(issueCategory);
-    const authority = department
-      ? await prisma.authority.findFirst({ where: { department }, select: { id: true } })
+    const departmentName = getAuthorityDepartmentForCategory(issueCategory);
+    const authority = departmentName
+      ? await prisma.authority.findFirst({
+          where: { department: { name: departmentName } },
+          select: { id: true, departmentId: true },
+        })
       : null;
 
 const completedAt = new Date();
@@ -198,6 +202,7 @@ const completedAt = new Date();
           category: issueCategory,
           severity,
           authorityId: authority?.id ?? null,
+          departmentId: authority?.departmentId ?? null,
         },
       });
       await recordAudit({
@@ -221,6 +226,27 @@ const completedAt = new Date();
     // (deterministic deadline from SLA policy) and reconcile its status.
     await ensurePromiseForIssue(issueId).catch(() => undefined);
     await reconcilePromiseStatus(issueId).catch(() => undefined);
+
+    // Phase 24 — when classification re-routes the issue to a different
+    // authority, notify the newly-assigned department (deduped, best-effort).
+    const assignedId = authority?.id ?? null;
+    if (assignedId && assignedId !== issue.authorityId) {
+      const authorityUser = await prisma.authority.findUnique({
+        where: { id: assignedId },
+        select: { userId: true },
+      });
+      if (authorityUser?.userId) {
+        await createNotification({
+          userId: authorityUser.userId,
+          issueId,
+          type: 'AUTHORITY_ASSIGNED',
+          title: `Report assigned to your department`,
+          message: `Report ${issue.publicId} was assigned to your department through AI routing.`,
+          link: `/dashboard/issues/${issueId}`,
+          dedupeKey: `AUTHORITY_ASSIGNED:${issueId}:${assignedId}`,
+        }).catch(() => undefined);
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await failAnalysis(issueId, message, 'error');

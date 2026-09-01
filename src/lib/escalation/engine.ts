@@ -161,6 +161,26 @@ async function createEscalationForRule(
       });
     }
 
+    // Phase 24 — the assigned authority must know their report escalated, so
+    // they can act before it climbs the ladder further.
+    if (issue.authorityId) {
+      const authorityUser = await tx.authority.findUnique({
+        where: { id: issue.authorityId },
+        select: { userId: true },
+      });
+      if (authorityUser?.userId) {
+        await createNotification({
+          tx,
+          userId: authorityUser.userId,
+          issueId: issue.id,
+          type: 'ESCALATION_CREATED',
+          title: `Report ${issue.publicId} was escalated (Level ${level})`,
+          message: `Report ${issue.publicId} was escalated to ${escalationLevelLabel(level)} — action is needed.`,
+          dedupeKey: `ESCALATION:${created.id}:authority`,
+        });
+      }
+    }
+
     return created;
   });
 

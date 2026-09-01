@@ -10,6 +10,7 @@ import type { RiskLevel } from '@/lib/risk/scoring';
  * Query params:
  *   ?riskLevel=CRITICAL|HIGH|MEDIUM|LOW
  *   ?category=...
+ *   ?departmentId=...
  *   ?days=30
  *   ?limit=10
  */
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
 
     const riskLevel = sp.get('riskLevel') as RiskLevel | null;
     const category = sp.get('category');
+    const departmentId = sp.get('departmentId');
     const days = sp.get('days') ? Number(sp.get('days')) : undefined;
     const limit = sp.get('limit') ? Number(sp.get('limit')) : undefined;
 
@@ -29,10 +31,17 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
+    if (days != null && (!Number.isFinite(days) || days <= 0)) {
+      return NextResponse.json(
+        { error: { code: 'INVALID_INPUT', message: 'Invalid days.' } },
+        { status: 400 },
+      );
+    }
 
     const hotspots = await fetchHotspots({
       riskLevel: riskLevel ?? undefined,
       category: category ?? undefined,
+      departmentId: departmentId ?? undefined,
       days: days ?? 30,
       limit: limit ?? 10,
     });

@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/server/session';
 import { addIssueEvidence } from '@/lib/issues/actions';
 import { storeEvidenceFile, deleteEvidenceFile } from '@/lib/server/storage';
 import { assertValidEvidenceFile } from '@/lib/validation/evidence';
+import { sanitizeUpload } from '@/lib/security/fileScan';
 import { queryIssueEvidence } from '@/lib/issues/query';
 import { prisma } from '@/lib/db';
 
@@ -50,12 +51,17 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
     const buffers = await Promise.all(files.map(async (f) => Buffer.from(await f.arrayBuffer())));
     const metadata: Array<{ url: string; fileName?: string | null; mimeType?: string | null; sizeBytes?: number | null }> = [];
     for (let i = 0; i < files.length; i += 1) {
-      const { mimeType } = assertValidEvidenceFile({
+      const { mimeType, detected } = assertValidEvidenceFile({
         buffer: buffers[i],
         originalName: files[i].name,
         declaredMime: files[i].type,
       });
-      const stored = await storeEvidenceFile({ buffer: buffers[i], mimeType, originalName: files[i].name });
+      // Phase 21: malware/polyglot scan + image metadata (EXIF/GPS) stripping.
+      const sanitized = await sanitizeUpload({ buffer: buffers[i], kind: detected });
+      if (!sanitized.clean) {
+        throw badRequest(sanitized.reason ?? 'File failed security scan.');
+      }
+      const stored = await storeEvidenceFile({ buffer: sanitized.buffer, mimeType, originalName: files[i].name });
       storedKeys.push(stored.url);
       metadata.push({
         url: stored.url,

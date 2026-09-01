@@ -41,6 +41,15 @@ interface CitizenStats {
   notificationsUnread: number;
 }
 
+interface RiskSummaryData {
+  totalAreas: number;
+  totalActiveIssues: number;
+  totalSlaBreaches: number;
+  averageRiskScore: number;
+  overallTrend: { direction: 'INCREASING' | 'STABLE' | 'DECREASING'; percentage: number } | null;
+  topHotspots: Array<{ areaName: string; riskScore: number; riskLevel: string }>;
+}
+
 function greeting(): string {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -63,6 +72,7 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
     fetcher,
     { refreshInterval: 30000 },
   );
+  const { data: risk } = useSWR<RiskSummaryData>('/api/risk/summary', fetcher, { refreshInterval: 60000 });
 
   const myIssues = mine?.issues ?? [];
   const latest = myIssues[0];
@@ -72,6 +82,19 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
   );
 
   const stats = summary?.stats;
+  const riskLevel =
+    risk?.averageRiskScore == null
+      ? null
+      : risk.averageRiskScore >= 75
+        ? 'CRITICAL'
+        : risk.averageRiskScore >= 50
+          ? 'HIGH'
+          : risk.averageRiskScore >= 25
+            ? 'MEDIUM'
+            : 'LOW';
+  const riskTrend = risk?.overallTrend
+    ? `${risk.overallTrend.direction === 'INCREASING' ? '+' : risk.overallTrend.direction === 'DECREASING' ? '−' : ''}${risk.overallTrend.percentage}% vs prior cycle`
+    : null;
   const myMapPoints = myIssues
     .filter((i) => i.latitude != null && i.longitude != null)
     .map((i) => ({ id: i.id, publicId: i.publicId, title: i.title, latitude: i.latitude!, longitude: i.longitude!, displayStatus: i.displayStatus }));
@@ -109,7 +132,7 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
         <StatCard label="Evidence Attached" value={stats?.evidenceTotal ?? '…'} loading={summaryLoading} icon={ImageIcon} tone="cyan"
           sub={stats ? `${stats.evidencePending} pending review` : undefined} />
         <StatCard label="Karma" value={stats?.karmaScore ?? '…'} loading={summaryLoading} icon={Award} tone="neutral"
-          sub="reputation engine arrives later" />
+          sub="real balance, earned and auditable" />
       </div>
 
       {summaryError && <ErrorState onRetry={() => mutateSummary()} />}
@@ -139,12 +162,12 @@ export function CitizenDashboard({ name }: { name?: string | null }) {
 
         <div className="space-y-6">
           <RiskEngine
-            score={stats ? Math.min(100, Math.max(1, (stats.active ?? 0) + 10)) : undefined}
-            level={stats && stats.active > 20 ? 'HIGH' : stats && stats.active > 8 ? 'MODERATE' : 'LOW'}
-            ward="Your city · live"
-            trend={stats ? `~${stats.active ?? 0} active` : undefined}
-            confidence={0.92}
-            predictedIncidents={stats?.active ?? undefined}
+            score={risk && risk.totalAreas > 0 ? Math.max(0, Math.min(100, Math.round(risk.averageRiskScore))) : undefined}
+            level={risk && risk.totalAreas > 0 ? riskLevel : undefined}
+            ward={risk && risk.topHotspots[0]?.areaName ? risk.topHotspots[0].areaName : undefined}
+            trend={risk && risk.totalAreas > 0 ? riskTrend : undefined}
+            confidence={risk && risk.totalAreas > 0 ? Math.max(0, Math.min(1, risk.averageRiskScore / 100)) : undefined}
+            predictedIncidents={risk && risk.totalAreas > 0 ? risk.totalActiveIssues : undefined}
             live
           />
 

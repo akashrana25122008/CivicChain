@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { handleApiError } from '@/lib/server/api';
+import { NextRequest, NextResponse } from 'next/server';
+import { handleApiError, badRequest, ApiError } from '@/lib/server/api';
 import { requireRole } from '@/lib/server/session';
 import { prisma } from '@/lib/db';
 import { EscalationStatus, Prisma } from '../../../../../generated/prisma/client';
@@ -15,7 +15,10 @@ export async function GET() {
     const [authorities, issuesByStatus, escalationsByDept, promisesByDept, avgRows] =
       await Promise.all([
         prisma.authority.findMany({
-          include: { user: { select: { name: true, email: true } } },
+          include: {
+            user: { select: { name: true, email: true } },
+            department: { select: { name: true } },
+          },
         }),
         prisma.issue.groupBy({
           by: ['authorityId', 'status'],
@@ -38,7 +41,7 @@ export async function GET() {
         prisma.$queryRaw<Array<{ authorityId: string; avg_minutes: number | null }>>(Prisma.sql`
           SELECT i."authorityId" AS "authorityId",
                  AVG(EXTRACT(EPOCH FROM (al."createdAt" - i."createdAt")) / 60)::float AS avg_minutes
-          FROM "AuditLog" al
+          FROM "AuditEvent" al
           JOIN "Issue" i ON i.id = al."issueId"
           WHERE al.action = 'STATUS_CHANGED'
             AND al.metadata->>'to' = 'RESOLVED'
@@ -80,7 +83,7 @@ export async function GET() {
         return {
           id: a.id,
           name: a.name,
-          department: a.department,
+          department: a.department?.name ?? null,
           jurisdiction: a.jurisdiction,
           email: a.email,
           operator: a.user ? a.user.name ?? a.user.email : null,
@@ -96,6 +99,73 @@ export async function GET() {
       }),
       total: authorities.length,
     });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+/**
+ * POST /api/admin/departments — create a canonical Department, optionally with
+ * a linked Authority (the department's operator face). Department names are
+ * unique (they drive category→department routing in create.ts).
+ */
+export async function POST(request: NextRequest) {
+  try {
+    await requireRole('ADMIN');
+
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      throw new ApiError(400, 'INVALID_INPUT', 'Request body must be JSON.');
+    }
+
+    const parseStr = (v: unknown, label: string): string | null =>
+      typeof v === 'string' && v.trim().length > 0 ? v.trim() : null;
+
+    const name = parseStr(body.name, 'name');
+    if (!name) throw badRequest('A department "name" is required.');
+    if (name.length > 200) throw badRequest('Department name must be at most 200 characters.');
+
+    const jurisdiction = parseStr(body.jurisdiction, 'jurisdiction');
+    const authorityName = parseStr(body.authorityName, 'authorityName');
+    const authorityEmail = parseStr(body.authorityEmail, 'authorityEmail');
+
+    const existing = await prisma.department.findUnique({ where: { name }, select: { id: true } });
+    if (existing) {
+      throw new ApiError(409, 'DEPARTMENT_EXISTS', `A department named "${name}" already exists.`);
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const department = await tx.department.create({
+        data: { name, jurisdiction: jurisdiction ?? null },
+      });
+      const authority = authorityName
+        ? await tx.authority.create({
+            data: {
+              name: authorityName,
+              email: authorityEmail ?? null,
+              jurisdiction: jurisdiction ?? null,
+              departmentId: department.id,
+            },
+          })
+        : null;
+      return { department, authority };
+    });
+
+    return NextResponse.json(
+      {
+        department: {
+          id: created.department.id,
+          name: created.department.name,
+          jurisdiction: created.department.jurisdiction,
+        },
+        authority: created.authority
+          ? { id: created.authority.id, name: created.authority.name, email: created.authority.email }
+          : null,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return handleApiError(error);
   }

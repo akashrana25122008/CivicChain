@@ -24,6 +24,7 @@ import { CivicMapFrame } from '@/components/dashboard/CivicMapFrame';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { ErrorState } from '@/components/dashboard/ErrorState';
 import { EmptyState } from '@/components/dashboard/EmptyState';
+import { REGION_CITY } from '@/lib/city';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -112,7 +113,7 @@ export default function DepartmentDashboard() {
           <div className="aspect-[16/6]">
             <CivicMapFrame
               title="Assigned work map"
-              location={{ queryLabel: 'Mathura, Uttar Pradesh' }}
+              location={{ queryLabel: REGION_CITY.label }}
               zoom={11}
               mapHref="/map"
             />

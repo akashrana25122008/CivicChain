@@ -7,6 +7,14 @@ import type { NextAuthConfig } from 'next-auth';
  *
  * The role is placed into the JWT at sign-in (server-side, authoritative) and
  * read back by the proxy without any database access.
+ *
+ * CSRF posture (Phase 21): the session cookie is `httpOnly` + `sameSite:'lax'`
+ * + `secure` in production. SameSite=Lax blocks cross-site (CSRF) state-changing
+ * cookie sends for top-level POST requests, and the state-changing API is
+ * authenticated via the JWT session (not ambient credentials), so Cross-Site
+ * Request Forgery risk is mitigated by the SameSite policy + bearer-token
+ * model. No custom anti-CSRF double-submit token is added — it would be
+ * redundant with SameSite=Lax here and brittle across the JWT-bearer surface.
  */
 export const authConfig = {
   trustHost: true,

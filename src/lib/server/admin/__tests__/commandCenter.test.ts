@@ -67,7 +67,7 @@ function escRow(overrides: Partial<EscalationRow> = {}): EscalationRow {
     createdAt: new Date(NOW.getTime() - 1000 * 60 * 60 * 2),
     issue: { publicId: 'CC-9' },
     caller: { name: 'Alice' },
-    authority: { department: 'Water' },
+    authority: { department: { name: 'Water' } },
     ...overrides,
   };
 }

@@ -11,7 +11,7 @@ export interface RouteContext {
 }
 
 const DETAIL_INCLUDE = {
-  authority: true,
+  authority: { include: { department: { select: { name: true } } } },
   promise: true,
   reporter: { select: { name: true, email: true } },
   evidence: {
@@ -23,7 +23,7 @@ const DETAIL_INCLUDE = {
       },
     },
   },
-  auditLogs: { orderBy: { createdAt: 'asc' as const } },
+  auditEvents: { orderBy: { createdAt: 'asc' as const } },
 } as const;
 
 /** Department-scoped issue detail: visible only to the authority owning the issue. */
@@ -43,7 +43,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         authority: issue.authority,
         promise: issue.promise,
         evidence: issue.evidence,
-        auditLogs: issue.auditLogs,
+        auditEvents: issue.auditEvents,
         viewerId: user.id,
         revealReporter: true,
         revealContact: true,

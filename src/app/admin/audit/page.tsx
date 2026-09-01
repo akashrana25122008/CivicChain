@@ -2,13 +2,20 @@
 
 import { useCallback, useState } from 'react';
 import useSWR from 'swr';
-import { ShieldCheck, Anchor, CheckCircle2, AlertTriangle, Fingerprint } from 'lucide-react';
+import { ShieldCheck, Anchor, CheckCircle2, AlertTriangle, Fingerprint, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { PageHeader } from '@/components/dashboard/PageHeader';
 import { TableFrame } from '@/components/dashboard/TableFrame';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import type { AuditLogItem } from '@/lib/issues/types';
+import type { AuditEventItem } from '@/lib/issues/types';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+interface AuditResponse {
+  logs: AuditEventItem[];
+  total: number;
+  actions: string[];
+  nextSeq: number | null;
+}
 
 interface LedgerVerify {
   valid: boolean;
@@ -30,8 +37,16 @@ function hashTrunc(h: string | null | undefined) {
 }
 
 export default function AdminAudit() {
-  const { data, error, isLoading, mutate } = useSWR<{ logs: AuditLogItem[]; total: number }>(
-    '/api/admin/audit',
+  const [action, setAction] = useState('ALL');
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [history, setHistory] = useState<Array<number | null>>([]);
+
+  const query = new URLSearchParams({ action, limit: '50' });
+  if (cursor != null) query.set('cursor', String(cursor));
+  const url = `/api/admin/audit?${query.toString()}`;
+
+  const { data, error, isLoading, mutate } = useSWR<AuditResponse>(
+    url,
     fetcher,
     { refreshInterval: 30000 },
   );
@@ -39,6 +54,25 @@ export default function AdminAudit() {
   const [verify, setVerify] = useState<LedgerVerify | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+
+  const changeAction = (value: string) => {
+    setHistory([]);
+    setCursor(null);
+    setAction(value);
+  };
+
+  const goNext = () => {
+    if (data?.nextSeq == null) return;
+    setHistory((h) => [...h, cursor]);
+    setCursor(data.nextSeq);
+  };
+
+  const goPrev = () => {
+    const prev = history[history.length - 1];
+    if (prev === undefined) return;
+    setHistory((h) => h.slice(0, -1));
+    setCursor(prev);
+  };
 
   const runVerify = useCallback(async () => {
     setVerifying(true);
@@ -56,6 +90,7 @@ export default function AdminAudit() {
   }, []);
 
   const ledger = verify?.valid ? true : verify ? false : null;
+  const hasPrev = history.length > 0;
 
   return (
     <div className="p-6 md:p-8">
@@ -88,9 +123,9 @@ export default function AdminAudit() {
             {ledger === true ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : ledger === false ? <AlertTriangle className="h-4 w-4 text-red-600" /> : <Fingerprint className="h-4 w-4 text-brand-600 dark:text-brand-400" />}
             <span className="font-semibold text-neutral-700 dark:text-neutral-200">Chain integrity</span>
           </div>
-          {ledger === null ? (
+          {verify === null ? (
             <p className="text-sm text-neutral-500">Run a full-chain verification to recompute every hash and detect tampering.</p>
-          ) : ledger ? (
+          ) : verify.valid ? (
             <p className="text-sm text-emerald-700 dark:text-emerald-300">
               All {verify.summary.count} records verified. Genesis link valid, zero tampered rows, zero broken links.
             </p>
@@ -119,6 +154,47 @@ export default function AdminAudit() {
       </div>
 
       <div className="rounded-xl border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-dark-border">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-neutral-400" />
+            <select
+              value={action}
+              onChange={(e) => changeAction(e.target.value)}
+              aria-label="Filter audit records by action"
+              className="rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-1.5 text-sm text-neutral-700 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {(['ALL', ...(data?.actions ?? [])] as string[]).map((a) => (
+                <option key={a} value={a}>
+                  {a === 'ALL' ? 'All actions' : a.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-neutral-500">
+              {data ? `${data.total.toLocaleString()} record(s)` : '…'}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={goPrev}
+                disabled={!hasPrev || isLoading}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 dark:border-dark-border text-neutral-500 hover:bg-neutral-50 dark:hover:bg-dark-bg disabled:opacity-40"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                onClick={goNext}
+                disabled={data?.nextSeq == null || isLoading}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 dark:border-dark-border text-neutral-500 hover:bg-neutral-50 dark:hover:bg-dark-bg disabled:opacity-40"
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
         <TableFrame
           columns={[
             { key: 'seq', label: '#' },
@@ -160,9 +236,9 @@ export default function AdminAudit() {
             </tr>
           ))}
         </TableFrame>
-        {(data?.logs.length ?? 0) > 0 && (
+        {data && (data.logs.length ?? 0) > 0 && (
           <div className="px-4 py-3 border-t border-neutral-200 dark:border-dark-border text-xs text-neutral-500">
-            Showing the most recent {data?.logs.length} of {data?.total} records. Each row is chained to its predecessor; the full trail accrues without pruning.
+            Showing the most recent {data.logs.length} of {data.total.toLocaleString()} matching record(s). Each row is chained to its predecessor; the full trail accrues without pruning.
           </div>
         )}
         {!isLoading && !error && (data?.logs.length ?? 0) === 0 && (

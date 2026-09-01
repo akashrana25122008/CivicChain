@@ -23,13 +23,15 @@ import { StatCard } from '@/components/dashboard/StatCard';
 import { CivicMapFrame } from '@/components/dashboard/CivicMapFrame';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { ErrorState } from '@/components/dashboard/ErrorState';
-import type { AuditLogItem } from '@/lib/issues/types';
+import type { AuditEventItem } from '@/lib/issues/types';
+import { REGION_CITY } from '@/lib/city';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 interface PlatformStats {
   users: number;
   authorities: number;
+  departments: number;
   issues: number;
   resolved: number;
   activeIssues: number;
@@ -55,7 +57,7 @@ export default function AdminDashboard() {
   const { data: statsData, error: statsError, mutate: mutateStats } = useSWR<{ stats: PlatformStats }>('/api/admin/stats', fetcher, { refreshInterval: 30000 });
   const { data: health } = useSWR<HealthData>('/api/admin/health', fetcher, { refreshInterval: 60000 });
   const { data: depts } = useSWR<{ authorities: Array<{ id: string; name: string; department: string; jurisdiction: string; assigned: number; active: number; escalationsOpen: number }> }>('/api/admin/departments', fetcher, { refreshInterval: 30000 });
-  const { data: audit, error: auditError } = useSWR<{ logs: AuditLogItem[] }>('/api/admin/audit', fetcher, { refreshInterval: 30000 });
+  const { data: audit, error: auditError } = useSWR<{ logs: AuditEventItem[] }>('/api/admin/audit', fetcher, { refreshInterval: 30000 });
 
   const s = statsData?.stats;
 
@@ -81,7 +83,7 @@ export default function AdminDashboard() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         <StatCard label="Users" value={s?.users ?? '…'} loading={!s} icon={Users} tone="brand" />
-        <StatCard label="Departments" value={s?.authorities ?? '…'} loading={!s} icon={Building2} tone="violet" />
+        <StatCard label="Departments" value={s?.departments ?? '…'} loading={!s} icon={Building2} tone="violet" />
         <StatCard label="Issues" value={s?.issues ?? '…'} loading={!s} icon={FileText} tone="cyan"
           sub={s ? `${s.activeIssues} active` : undefined} />
         <StatCard label="Resolved" value={s?.resolved ?? '…'} loading={!s} icon={CheckCircle2} tone="emerald"
@@ -111,7 +113,7 @@ export default function AdminDashboard() {
           <div className="aspect-[16/6]">
             <CivicMapFrame
               title="Citywide operations map"
-              location={{ queryLabel: 'Mathura, Uttar Pradesh' }}
+              location={{ queryLabel: REGION_CITY.label }}
               zoom={11}
               mapHref="/map"
             />

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/session';
 import { handleApiError } from '@/lib/server/api';
+import { withRequest } from '@/lib/server/timing';
 import { requireOwnAuthority } from '@/lib/server/dept';
 import { getCommandCenter, type CommandCenterParams } from '@/lib/server/department/commandCenter';
 import type { IssueCategory, IssueStatus, PriorityLevel, Severity } from '../../../../../generated/prisma/client';
@@ -23,7 +24,7 @@ const VALID_PRIORITY = new Set<string>(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
  *   category, status, severity, priorityLevel, ward, slaState, riskLevel,
  *   q, limit, includeClosed
  */
-export async function GET(request: NextRequest) {
+export const GET = withRequest(async (request: NextRequest) => {
   try {
     const user = await requireUser();
     const authority = await requireOwnAuthority(user);
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
       ...params,
       authority: {
         name: authority.name,
-        department: authority.department,
+        department: authority.department?.name ?? null,
         jurisdiction: authority.jurisdiction,
       },
     });
@@ -69,4 +70,4 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return handleApiError(error);
   }
-}
+});

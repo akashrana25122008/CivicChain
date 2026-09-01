@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/server/session';
 import { handleApiError } from '@/lib/server/api';
+import { withRequest } from '@/lib/server/timing';
 import { getAdminCommandCenter } from '@/lib/server/admin/commandCenter';
 
 /**
@@ -10,7 +11,7 @@ import { getAdminCommandCenter } from '@/lib/server/admin/commandCenter';
  * computed live from real database records; RBAC is enforced here via
  * `requireRole('ADMIN')` — never trusted from the browser.
  */
-export async function GET() {
+export const GET = withRequest(async () => {
   try {
     await requireRole('ADMIN');
     const data = await getAdminCommandCenter();
@@ -18,4 +19,4 @@ export async function GET() {
   } catch (error) {
     return handleApiError(error);
   }
-}
+});

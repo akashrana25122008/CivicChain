@@ -13,7 +13,13 @@ export async function getSessionUser(): Promise<User | null> {
   const userId = session?.user?.id;
   if (!userId) return null;
   try {
-    return await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // Phase 24 — a deactivated account is treated as signed out everywhere.
+    // Existing JWT sessions remain technically valid at the edge, but every
+    // server-side authorization flows through this function, so an inactive
+    // account cannot act until reactivated.
+    if (!user || !user.active) return null;
+    return user;
   } catch {
     return null;
   }

@@ -58,35 +58,66 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
 
     const authority = actor.role === 'AUTHORITY' ? await getOwnAuthority(actor) : null;
 
-    const escalation = await prisma.escalation.create({
-      data: {
-        issueId: id,
-        callerId: actor.id,
-        authorityId: authority?.id ?? null,
-        level,
-        status: 'OPEN',
-        reason,
-      },
-    });
-
-    await recordAudit({
-      actorId: actor.id,
-      issueId: id,
-      action: 'ESCALATION_CREATED',
-      entityType: 'Issue',
-      entityId: id,
-      metadata: { escalationId: escalation.id, level, reason },
-    });
-
-    if (issue.reporterId !== actor.id) {
-      await createNotification({
-        userId: issue.reporterId,
-        issueId: id,
-        type: 'ESCALATION_CREATED',
-        title: `Report ${issue.publicId} was escalated`,
-        message: `Escalated to level ${level}.${reason ? ` Reason: ${reason}` : ''}`,
+    // Phase 24 — if someone else escalates a report assigned to a department,
+    // the authority must know before the ladder climbs further. Read is done
+    // before the write transaction; the notification itself joins it.
+    let authorityUser: { userId: string | null } | null = null;
+    if (issue.authorityId && !isAuthority) {
+      authorityUser = await prisma.authority.findUnique({
+        where: { id: issue.authorityId },
+        select: { userId: true },
       });
     }
+
+    // Escalation + audit + both notifications commit atomically: a crash can
+    // never leave an escalation that was never audited or silently notified.
+    const escalation = await prisma.$transaction(async (tx) => {
+      const created = await tx.escalation.create({
+        data: {
+          issueId: id,
+          callerId: actor.id,
+          authorityId: authority?.id ?? null,
+          level,
+          status: 'OPEN',
+          reason,
+        },
+      });
+
+      await recordAudit({
+        tx,
+        actorId: actor.id,
+        issueId: id,
+        action: 'ESCALATION_CREATED',
+        entityType: 'Issue',
+        entityId: id,
+        metadata: { escalationId: created.id, level, reason },
+      });
+
+      if (issue.reporterId !== actor.id) {
+        await createNotification({
+          tx,
+          userId: issue.reporterId,
+          issueId: id,
+          type: 'ESCALATION_CREATED',
+          title: `Report ${issue.publicId} was escalated`,
+          message: `Escalated to level ${level}.${reason ? ` Reason: ${reason}` : ''}`,
+        });
+      }
+
+      if (authorityUser?.userId) {
+        await createNotification({
+          tx,
+          userId: authorityUser.userId,
+          issueId: id,
+          type: 'ESCALATION_CREATED',
+          title: `Report ${issue.publicId} was escalated`,
+          message: `Escalated to level ${level}${reason ? ` — ${reason}` : ''}. Action is needed on your assigned report.`,
+          dedupeKey: `ESCALATION:${created.id}:authority`,
+        });
+      }
+
+      return created;
+    });
 
     return NextResponse.json(
       { escalation: { id: escalation.id, issueId: id, level, status: escalation.status }, issueStatus: issue.status },

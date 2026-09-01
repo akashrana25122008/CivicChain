@@ -35,11 +35,7 @@ async function isAssignedAuthority(actor: User, authorityId: string | null): Pro
   return !!authority && authority.id === authorityId;
 }
 
-const RESOLUTION_PRECONDITIONS: readonly IssueStatus[] = [
-  IssueStatus.IN_PROGRESS,
-  IssueStatus.ASSIGNED,
-  IssueStatus.VERIFIED,
-];
+const RESOLUTION_PRECONDITIONS: readonly IssueStatus[] = [IssueStatus.IN_PROGRESS];
 
 /**
  * resolveIssue — mark an issue as resolved. Authorized staff only. This is the
@@ -72,15 +68,9 @@ export async function resolveIssue(input: {
 
   await transitionIssue({ issueId, actor, nextStatus: IssueStatus.RESOLVED, note });
 
-  if (issue.reporterId !== actor.id) {
-    await createNotification({
-      userId: issue.reporterId,
-      issueId,
-      type: 'STATUS_CHANGED',
-      title: `Report ${issue.publicId} has been resolved`,
-      message: 'You can verify whether the problem is actually fixed.',
-    });
-  }
+  // Note: transitionIssue itself emits the STATUS_CHANGED notification to the
+  // reporter (deduped via STATUS_CHANGED:<issueId>:RESOLVED). A second
+  // notification here would be a confusing duplicate.
 
   // Mark the resolution Promise honoured (status -> COMPLETED).
   await reconcilePromiseStatus(issueId).catch(() => undefined);

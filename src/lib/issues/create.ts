@@ -7,7 +7,10 @@ import {
   humanLocationLabel,
   extractWardFromText,
 } from '@/lib/server/geocode';
-import { getAuthorityDepartmentForCategory } from '@/lib/issues/mapping';
+import {
+  defaultSeverityForCategory,
+  getAuthorityDepartmentForCategory,
+} from '@/lib/issues/mapping';
 import { hashEvidenceImages, storePriorityForIssue } from '@/lib/server/intelligence/pipeline';
 import { assignIncident } from '@/lib/server/intelligence/duplicates/cluster';
 import { ensurePromiseForIssue } from '@/lib/sla/promise';
@@ -29,7 +32,7 @@ export const DUPLICATE_WINDOW_MS = 60_000;
 
 /**
  * Creates a real report in PostgreSQL atomically:
- *   Issue(+publicId) → Evidence rows → AuditLog(REPORT_CREATED) → Notification.
+ *   Issue(+publicId) → Evidence rows → AuditEvent(REPORT_CREATED) → Notification.
  * Reporter identity comes from the authenticated session, never the request.
  * Evidence file payloads must be persisted BEFORE this call; on failure no
  * silent success: caller removes leftover files and this throws.
@@ -84,24 +87,31 @@ export async function createReport(input: {
 
   // Authority routing: category-map first, then narrow to any authority whose
   // jurisdiction matches the detected ward (registry-driven, not hardcoded).
+  // The department string resolves through the first-class Department relation
+  // (Phase 23); departmentId is denormalized onto the Issue for hot lookups.
   let authorityId: string | null = null;
-  const department = getAuthorityDepartmentForCategory(data.category);
-  if (department) {
+  let departmentId: string | null = null;
+  const departmentName = getAuthorityDepartmentForCategory(data.category);
+  if (departmentName) {
     const base = await prisma.authority.findFirst({
-      where: { department },
-      select: { id: true },
+      where: { department: { name: departmentName } },
+      select: { id: true, departmentId: true },
     });
     authorityId = base?.id ?? null;
+    departmentId = base?.departmentId ?? null;
     const matchedWard: string | null = ward;
     if (matchedWard) {
       const wardAuthority = await prisma.authority.findFirst({
         where: {
-          department,
+          department: { name: departmentName },
           jurisdiction: { contains: matchedWard, mode: 'insensitive' },
         },
-        select: { id: true },
+        select: { id: true, departmentId: true },
       });
-      if (wardAuthority) authorityId = wardAuthority.id;
+      if (wardAuthority) {
+        authorityId = wardAuthority.id;
+        departmentId = wardAuthority.departmentId ?? departmentId;
+      }
     }
   }
 
@@ -128,6 +138,8 @@ const result = await prisma.$transaction(async (tx) => {
           accuracy: data.accuracy ?? null,
           reporterId,
           authorityId,
+          departmentId,
+          severity: defaultSeverityForCategory(data.category),
         },
       });
 
@@ -184,6 +196,27 @@ const result = await prisma.$transaction(async (tx) => {
 
   // Phase 6 — if the issue already has a routed authority, form its Promise.
   await ensurePromiseForIssue(result.issueId).catch(() => undefined);
+
+  // Phase 24 — notify the routed authority about the new assignment (deduped,
+  // best-effort). A later AI re-route raises its own notification; alert noise
+  // is prevented by the dedupeKey.
+  if (authorityId) {
+    const authorityUser = await prisma.authority.findUnique({
+      where: { id: authorityId },
+      select: { userId: true },
+    });
+    if (authorityUser?.userId) {
+      await createNotification({
+        userId: authorityUser.userId,
+        issueId: result.issueId,
+        type: 'AUTHORITY_ASSIGNED',
+        title: `New report routed to your department`,
+        message: `Report ${result.publicId} was routed to your department for action.`,
+        link: `/dashboard/issues/${result.issueId}`,
+        dedupeKey: `AUTHORITY_ASSIGNED:${result.issueId}:${authorityId}`,
+      }).catch(() => undefined);
+    }
+  }
 
   return { ...result, duplicate: verdict };
 }

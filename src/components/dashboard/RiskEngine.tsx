@@ -1,22 +1,26 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, useMotionValue, useSpring, useReducedMotion, animate } from 'framer-motion';
-import { Activity, Cpu, Radar } from 'lucide-react';
+import { Cpu, Radar } from 'lucide-react';
 
 /**
- * Predictive Risk Engine visualization.
+ * City Risk Intelligence visualization.
  *
  * Persistent by design: when the "scan" animation completes, the final risk
  * state REMAINS on screen with a subtle continuous scanning ring. It never
  * blinks out to white or disappears — the result is always visible.
+ *
+ * Labels are deliberately NOT "AI" — the risk score is a deterministic,
+ * weighted computation over real issue data (see src/lib/risk/scoring.ts),
+ * not a machine-learning inference. Stay honest about that.
  */
 
 const STAGES = [
-  'INITIALIZING AI ENGINE',
-  'SCANNING CIVIC DATA',
-  'ANALYZING RISK PATTERNS',
-  'CALCULATING PREDICTION',
+  'LOADING CIVIC DATA',
+  'SCANNING ISSUE FEED',
+  'ANALYZING RISK FACTORS',
+  'CALCULATING WEIGHTED SCORE',
   'RESULT READY',
 ] as const;
 
@@ -40,22 +44,22 @@ const LEVEL_COLOR: Record<string, string> = {
 };
 
 export function RiskEngine({
-  score = 87,
-  level = 'CRITICAL',
-  ward = 'Ward 17 · Mathura',
-  trend = '+3.2% vs last cycle',
-  confidence = 0.92,
-  predictedIncidents = 27,
+  score = null,
+  level = null,
+  ward = null,
+  trend = null,
+  confidence = null,
+  predictedIncidents = null,
   live = true,
 }: RiskEngineProps) {
   const reduce = useReducedMotion();
+  const hasData = score != null;
   const scoreValue = score ?? 0;
   const [stage, setStage] = useState<number>(-1);
   const [scanning, setScanning] = useState(false);
   const shownScore = useMotionValue(0);
   const springScore = useSpring(shownScore, { stiffness: 60, damping: 20 });
   const [displayScore, setDisplayScore] = useState(0);
-  const pulseRef = useRef<HTMLDivElement>(null);
 
   // Keep the spring's number synced into state for the <text> label.
   useEffect(() => springScore.on('change', (v) => setDisplayScore(Math.round(v))), [springScore]);
@@ -91,8 +95,11 @@ export function RiskEngine({
   };
 
   // Run one scan on mount so the visualization is alive immediately.
+  // Deferred out of the synchronous effect body (React 19 lint) so the scan's
+  // state updates happen in a normal tick, not during the render commit.
   useEffect(() => {
-    runScan();
+    const t = window.setTimeout(() => runScan(), 0);
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -109,8 +116,8 @@ export function RiskEngine({
       <div className="relative">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">Predictive Risk Engine</p>
-            <h3 className="font-display text-lg font-bold text-neutral-900 dark:text-white mt-0.5">City Risk Intelligence</h3>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">City Risk Intelligence</p>
+            <h3 className="font-display text-lg font-bold text-neutral-900 dark:text-white mt-0.5">Live Risk Overview</h3>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">
             <span className={scanning ? 'animate-pulse text-brand-600 dark:text-brand-300' : 'text-emerald-500'}>●</span>
@@ -168,10 +175,10 @@ export function RiskEngine({
             {/* centre readout */}
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
               <p className="text-5xl font-display font-bold text-neutral-900 dark:text-white" style={{ color }}>
-                {displayScore}
+                {hasData ? displayScore : '—'}
               </p>
               <p className="text-[11px] font-semibold uppercase tracking-widest mt-1" style={{ color }}>
-                {level}
+                {level ?? 'No data'}
               </p>
               <p className="text-[10px] text-neutral-400 mt-1 font-mono">/ 100</p>
             </div>
@@ -195,13 +202,13 @@ export function RiskEngine({
         {/* persistent metrics grid */}
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border p-3">
-            <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Confidence</p>
+            <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Risk Load</p>
             <p className="font-mono text-sm font-semibold text-neutral-900 dark:text-white mt-1">
               {confidence != null ? `${Math.round(confidence * 100)}%` : '—'}
             </p>
           </div>
           <div className="rounded-xl bg-neutral-50 dark:bg-dark-bg border border-neutral-200 dark:border-dark-border p-3">
-            <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Predicted</p>
+            <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Active Issues</p>
             <p className="font-mono text-sm font-semibold text-neutral-900 dark:text-white mt-1">
               {predictedIncidents != null ? `${predictedIncidents}` : '—'}
             </p>
@@ -216,9 +223,9 @@ export function RiskEngine({
 
         <div className="mt-4 flex items-center justify-between text-[11px] text-neutral-400 dark:text-neutral-500">
           <span className="flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5" /> MODEL v2.1
+            <Cpu className="w-3.5 h-3.5" /> WEIGHTED RISK MODEL
           </span>
-          <span className="truncate">{ward}</span>
+          <span className="truncate">{ward ?? 'No ward data yet'}</span>
         </div>
 
         <div className="mt-4">
@@ -229,7 +236,7 @@ export function RiskEngine({
             className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand-700 hover:bg-brand-800 dark:bg-brand-600 dark:hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2.5 transition-colors disabled:opacity-60"
           >
             <Radar className="w-4 h-4" aria-hidden="true" />
-            {scanning ? 'Scanning…' : 'Re-run AI Scan'}
+            {scanning ? 'Scanning…' : 'Re-run Risk Scan'}
           </button>
         </div>
       </div>

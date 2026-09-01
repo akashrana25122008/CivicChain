@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { handleApiError } from '@/lib/server/api';
 import { requireRole } from '@/lib/server/session';
 import { prisma } from '@/lib/db';
-import { stat } from 'node:fs/promises';
-import { storageBackend } from '@/lib/server/storage';
+import { probeStorageHealth } from '@/lib/server/storage';
 
 /**
  * ADMIN-only system health probe. Each check fails independently instead of
@@ -26,17 +25,14 @@ export async function GET() {
         })),
     ]);
 
-    const backend = storageBackend();
-    const storage =
-      backend === 's3'
-        ? { ok: true as const, backend: 's3' as const }
-        : {
-            ok: true as const,
-            backend: 'local' as const,
-            writable: await stat(process.env.EVIDENCE_STORAGE_DIR || 'private/uploads')
-              .then((s) => s.isDirectory())
-              .catch(() => false),
-          };
+    const storageProbe = await probeStorageHealth();
+    const storage = storageProbe.ok
+      ? { ok: true as const, backend: storageProbe.backend as 's3' | 'local' }
+      : {
+          ok: false as const,
+          backend: storageProbe.backend as 's3' | 'local',
+          error: storageProbe.error ?? 'storage backend unreachable',
+        };
 
     const authSecret = Boolean(process.env.AUTH_SECRET);
     const authEmailConfigured = Boolean(process.env.EMAIL_SERVER);
@@ -45,7 +41,7 @@ export async function GET() {
       await Promise.all([
         prisma.user.count(),
         prisma.issue.count(),
-        prisma.auditLog.count(),
+        prisma.auditEvent.count(),
         prisma.notification.count({ where: { read: false } }),
         prisma.escalation.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
         prisma.evidence.count({

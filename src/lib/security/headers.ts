@@ -1,10 +1,25 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
 /**
  * Security headers middleware.
  * Adds critical security headers to all responses.
  * Runs after the proxy/auth middleware so protected routes also get headers.
+ *
+ * CSP trade-off (documented, Phase 21):
+ *  - `'unsafe-inline'` in script-src is retained deliberately. Next.js App
+ *    Router streams RSC bootstrapping + hydration via inline scripts; removing
+ *    it without a nonce/hash integration would break every navigated page.
+ *    Follow-up hardening: adopt a nonce strategy (`useReportTo` +
+ *    `next/headers` nonce) and then drop `'unsafe-inline'`.
+ *  - `'unsafe-eval'` is kept for map/AI client libraries that eval; review for
+ *    removal once those bundles are confirmed eval-free.
+ *  - `connect-src` intentionally allows `https:` + `wss:` broadly to support
+ *    externel AI/map/cdn origins without a per-route whitelist; tighten to an
+ *    explicit allow-list in deployments that pin those providers.
  */
+
+/** Minimal request shape — only the pathname is needed to pick a CSP variant. */
+type PathAware = { nextUrl: { pathname: string } };
 
 const CSP_DIRECTIVES = [
   "default-src 'self'",
@@ -36,7 +51,7 @@ const SECURITY_HEADERS = {
   'Cross-Origin-Embedder-Policy': 'credentialless',
 } as const;
 
-export function securityHeadersMiddleware(request: NextRequest, response: NextResponse): NextResponse {
+export function securityHeadersMiddleware(request: PathAware, response: NextResponse): NextResponse {
   // Apply security headers to all responses
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value);
@@ -70,7 +85,7 @@ export const MAP_CSP_DIRECTIVES = [
   "frame-src 'self' https://maps.google.com https://www.google.com/maps",
 ].join('; ');
 
-export function mapSecurityHeadersMiddleware(request: NextRequest, response: NextResponse): NextResponse {
+export function mapSecurityHeadersMiddleware(request: PathAware, response: NextResponse): NextResponse {
   // Apply map-specific CSP for pages that use MapLibre
   const isMapPage = request.nextUrl.pathname === '/map' ||
     request.nextUrl.pathname.startsWith('/dashboard/map') ||

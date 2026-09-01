@@ -166,6 +166,13 @@ export interface IssueDetail extends IssueListItem {
    * PromiseStatus and Issue lifecycle. Null when no Promise (no authority yet).
    */
   sla: SlaSnapshotItem;
+  /**
+   * Phase 24 — the current viewer is the reporter AND the issue is RESOLVED,
+   * so the client may show the Confirm-fixed / Dispute controls (POST /verify).
+   */
+  canVerify: boolean;
+  /** Real per-type vote counts (Phase 24), rolled from the issue's votes. */
+  voteSummary: VoteSummaryItem;
 }
 
 export interface ApiIssueResponse {
@@ -205,7 +212,7 @@ export interface EscalationItem {
   timeLabel: string;
 }
 
-export interface AuditLogItem {
+export interface AuditEventItem {
   id: string;
   action: string;
   entityType: string;
@@ -218,4 +225,75 @@ export interface AuditLogItem {
   seq?: number;
   hash?: string | null;
   prevHash?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 24 — Citizen surfaces (real DB-backed promise / verification /
+// community / escalation feeds replacing the hardcoded dashboard pages).
+// ---------------------------------------------------------------------------
+
+export type SlaStateValue = 'ON_TRACK' | 'AT_RISK' | 'BREACHED' | 'RESOLVED';
+
+/** A single commitment row for the citizen promise ledger (GET /api/my-promises). */
+export interface PromiseItem {
+  id: string;
+  publicId: string;
+  title: string;
+  category: string;
+  categoryLabel: string;
+  status: string;
+  statusLabel: string;
+  authority: string | null;
+  /** Real computed SLA standing (see src/lib/sla/state). */
+  slaState: SlaStateValue;
+  slaPctElapsed: number;
+  timeRemainingMs: number;
+  deadline: string;
+  /** Persisted PromiseStatus (OPEN | IN_PROGRESS | COMPLETED | BROKEN). */
+  promiseStatus: string;
+  createdAt: string;
+  timeLabel: string;
+}
+
+/** Reporter-facing resolution-confirmation row (GET /api/my-verifications). */
+export interface MyVerificationItem {
+  id: string;
+  publicId: string;
+  title: string;
+  category: string;
+  categoryLabel: string;
+  status: string;
+  statusLabel: string;
+  authority: string | null;
+  promiseLabel: string | null;
+  /** VERIFIED when the reporter confirmed the fix; PENDING when unresolved. */
+  verificationState: 'PENDING' | 'VERIFIED';
+  /** When the issue last entered a resolved/verified lifecycle state. */
+  resolvedAt: string;
+}
+
+/** Per-issue community-vote rollup (GET /api/community/feedback). */
+export interface CommunityFeedbackItem {
+  id: string;
+  publicId: string;
+  title: string;
+  category: string;
+  categoryLabel: string;
+  totalVotes: number;
+  confirmVotes: number;
+  supportVotes: number;
+  disputeVotes: number;
+  /** Share of total votes on this issue, 0-100; null when no votes. */
+  confirmPct: number | null;
+  supportPct: number | null;
+  disputePct: number | null;
+}
+
+/** Real per-type vote counts surfaced on the issue detail view. */
+export interface VoteSummaryItem {
+  confirm: number;
+  dispute: number;
+  support: number;
+  duplicate: number;
+  total: number;
 }

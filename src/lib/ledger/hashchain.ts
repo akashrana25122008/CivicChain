@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 /**
  * Phase 18 — Audit/Trust Ledger pure helpers.
  *
- * The AuditLog is an append-only, tamper-evident hash chain. Each row stores:
+ * The AuditEvent log is an append-only, tamper-evident hash chain. Each row stores:
  *   - `seq`:        monotonic chain position (genesis = 1)
  *   - `prevHash`:   the `hash` of the immediately-preceding row (null only for
  *                   genesis)

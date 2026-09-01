@@ -102,22 +102,22 @@ function LandingNavActions({ mobile }: { mobile?: boolean }) {
 
   if (!isAuthenticated) {
     return (
-      <div className={mobile ? 'flex flex-col gap-2' : 'flex items-center gap-2'}>
-        <Button size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
-          <Link href="/register" className="group flex items-center justify-center gap-2">
-            <UserPlus className={mobile ? 'w-5 h-5' : 'w-4 h-4'} />
-            Sign Up
-            <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
-          </Link>
-        </Button>
-        <Button variant="secondary" size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
-          <Link href="/login" className="group flex items-center justify-center gap-2">
-            <LogIn className={mobile ? 'w-5 h-5' : 'w-4 h-4'} />
-            Sign In
-            <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
-          </Link>
-        </Button>
-      </div>
+      <Link
+        href="/login"
+        className={cn(
+          'group inline-flex items-center justify-center gap-2 px-4 py-2',
+          'rounded-xl bg-white/80 dark:bg-dark-bg-elevated/80 backdrop-blur-lg',
+          'border border-brand-200 dark:border-brand-400/50',
+          'shadow-sm hover:shadow-lg transition-all duration-200',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2',
+          'hover:-translate-y-1 active:translate-y-0.5',
+          mobile ? 'w-full' : ''
+        )}
+      >
+        <LogIn className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+        <span className="font-medium text-sm text-neutral-900 dark:text-white">Sign In</span>
+        <ArrowRight className="w-4 h-4 text-brand-500 dark:text-brand-300 transition-transform duration-200 group-hover:translate-x-1" />
+      </Link>
     );
   }
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef } from 'react';
-import { motion, useReducedMotion, useInView } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
+import useSWR from 'swr';
 import { Card, CardContent } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
@@ -12,33 +12,47 @@ import {
   TrendingUp,
   Clock,
   Users,
-  ArrowRight,
 } from 'lucide-react';
-import Link from 'next/link';
-import { Button } from '@/components/ui/Button';
 import { AuthActions } from './AuthActions';
 import { DUR, EASE } from '@/lib/motion';
 
-const KPI = [
-  { label: 'Issues Tracked', value: 12842, icon: FileText, color: 'text-brand-500', bg: 'bg-brand-50 dark:bg-brand-900/20' },
-  { label: 'Resolved', value: 9421, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-  { label: 'Promise Fulfillment', value: 82.6, decimals: 1, suffix: '%', icon: TrendingUp, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-900/20' },
-  { label: 'Broken Promises', value: 1318, icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/20' },
-  { label: 'Avg Resolution Time', value: 4.2, decimals: 1, suffix: ' days', icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-  { label: 'AI-Verified', value: 91.3, decimals: 1, suffix: '%', icon: Users, color: 'text-cyan-500', bg: 'bg-cyan-50 dark:bg-cyan-900/20' },
-];
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-const DEPARTMENTS = [
-  { name: 'Roads & Infrastructure', fulfillment: 89, delay: '2.1 days', broken: 8 },
-  { name: 'Sanitation', fulfillment: 84, delay: '1.7 days', broken: 5 },
-  { name: 'Electrical', fulfillment: 93, delay: '1.1 days', broken: 2 },
-  { name: 'Drainage', fulfillment: 67, delay: '4.8 days', broken: 6 },
-];
+interface LandingIntelligence {
+  liveIssues: number;
+  resolvedToday: number;
+  promisesTracked: number;
+  brokenPromises: number;
+  activeRiskZones: number;
+  averageResolutionTime: number | null;
+  slaSuccessRatePct: number | null;
+  verifiedResolutions: number;
+  aiConfidence: number | null;
+  resolutionRatePct: number | null;
+  totalIssues: number;
+  resolvedIssues: number;
+  generatedAt: string;
+}
 
 export function DashboardPreviewSection() {
   const reduce = useReducedMotion();
-  const deptRef = useRef<HTMLDivElement>(null);
-  const deptInView = useInView(deptRef, { once: true, amount: 0.3 });
+  const { data } = useSWR<LandingIntelligence>('/api/public/intelligence', fetcher, {
+    refreshInterval: 300000,
+  });
+
+  const avgDays =
+    data?.averageResolutionTime != null
+      ? Math.round((data.averageResolutionTime / (60 * 24)) * 10) / 10
+      : 0;
+
+  const KPI = [
+    { label: 'Issues Tracked', value: data?.totalIssues ?? 0, decimals: 0, suffix: '', icon: FileText, color: 'text-brand-500', bg: 'bg-brand-50 dark:bg-brand-900/20' },
+    { label: 'Resolved', value: data?.resolvedIssues ?? 0, decimals: 0, suffix: '', icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Promise Fulfillment', value: data?.slaSuccessRatePct ?? 0, decimals: 1, suffix: '%', icon: TrendingUp, color: 'text-violet-500', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+    { label: 'Broken Promises', value: data?.brokenPromises ?? 0, decimals: 0, suffix: '', icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/20' },
+    { label: 'Avg Resolution Time', value: avgDays, decimals: 1, suffix: ' days', icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+    { label: 'AI-Verified Resolutions', value: data?.verifiedResolutions ?? 0, decimals: 0, suffix: '', icon: Users, color: 'text-cyan-500', bg: 'bg-cyan-50 dark:bg-cyan-900/20' },
+  ];
 
   return (
     <section className="py-20 md:py-32 theme-light dark:bg-dark-bg-card" id="dashboard">
@@ -95,58 +109,7 @@ export function DashboardPreviewSection() {
             })}
           </div>
 
-          <p className="text-center text-[10px] text-neutral-400 mb-8 font-mono">PROTOTYPE DATA</p>
-
-          <div className="p-8 rounded-2xl bg-white dark:bg-dark-bg border border-neutral-200 dark:border-dark-border shadow-lg dark:shadow-dark-lg">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-display text-lg font-semibold text-neutral-900 dark:text-white">Department Performance</h3>
-              <span className="text-xs text-neutral-500 font-mono">PROTOTYPE DATA</span>
-            </div>
-
-            <div ref={deptRef} className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {DEPARTMENTS.map((dept, i) => (
-                <motion.div
-                  key={dept.name}
-                  className="p-4 rounded-xl bg-neutral-50 dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border"
-                  initial={reduce ? false : { opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.4 }}
-                  transition={{ duration: DUR.standard, delay: i * 0.08, ease: EASE.out }}
-                >
-                  <h4 className="text-sm font-medium text-neutral-900 dark:text-white mb-3">{dept.name}</h4>
-                  <div className="space-y-2">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-neutral-500">Fulfillment</span>
-                        <span className="font-mono text-neutral-900 dark:text-white">
-                          <AnimatedNumber value={dept.fulfillment} delay={0.3} format={(n) => `${Math.round(n)}%`} />
-                        </span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-neutral-200 dark:bg-dark-border overflow-hidden">
-                        <motion.div
-                          className={cn(
-                            'h-full rounded-full',
-                            dept.fulfillment >= 85 ? 'bg-emerald-500' : dept.fulfillment >= 70 ? 'bg-amber-500' : 'bg-red-500'
-                          )}
-                          initial={{ width: '0%' }}
-                          animate={deptInView ? { width: `${dept.fulfillment}%` } : {}}
-                          transition={{ duration: 0.9, delay: 0.3 + i * 0.1, ease: EASE.out }}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-neutral-500">Avg Delay</span>
-                      <span className="font-mono text-neutral-900 dark:text-white">{dept.delay}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-neutral-500">Broken Promises</span>
-                      <span className="font-mono text-red-500">{dept.broken}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
+          <p className="text-center text-[10px] text-neutral-400 mb-8 font-mono">LIVE DATA — DIRECT FROM THE CIVICCHAIN DATABASE</p>
 
           <div className="mt-8 text-center">
             <AuthActions />

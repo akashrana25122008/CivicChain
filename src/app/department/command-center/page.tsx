@@ -110,6 +110,13 @@ const QUEUE_LEVEL_TONE: Record<string, 'red' | 'amber' | 'emerald' | 'brand' | '
   LOW: 'emerald',
 };
 
+function slaBadgeFor(sla: string): string {
+  if (sla === 'ON_TRACK') return 'onTrack';
+  if (sla === 'AT_RISK') return 'atRisk';
+  if (sla === 'BREACHED') return 'brokenPromise';
+  return 'resolved';
+}
+
 function formatPct(value: number | null): string {
   return value != null ? `${value}%` : '—';
 }
@@ -314,7 +321,7 @@ export default function DepartmentCommandCenter() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">{item.publicId}</span>
-                            <Badge variant="status" status={item.slaState.toLowerCase().replace(' ', '')} size="sm">
+                            <Badge variant="status" status={slaBadgeFor(item.slaState)} size="sm">
                               {item.slaState.replace('_', ' ')}
                             </Badge>
                             {item.riskLevel && (
@@ -482,6 +489,9 @@ export default function DepartmentCommandCenter() {
         onChanged={() => {
           void mutate();
         }}
+        canUpdateStatus
+        canVerify
+        canEscalate
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { currentLogger } from '@/lib/server/requestContext';
 
 /**
  * CivicChain outbound notification email (Phase 13).
@@ -54,8 +55,9 @@ export async function sendNotificationEmail(
     }
     // Local dev: log the email so the channel can be inspected/previewed, but
     // explicitly do NOT claim it was delivered.
-    console.log(
-      `\n[CivicChain DEV] Notification email (no SMTP configured):\nTo: ${input.to}\nSubject: ${input.subject}\n${input.text}\n`,
+    currentLogger().debug(
+      { email: { to: input.to, subject: input.subject, text: input.text } },
+      '[CivicChain DEV] Notification email (no SMTP configured)',
     );
     return { delivered: false, reason: 'No SMTP configured (dev preview log only).' };
   }
@@ -71,7 +73,7 @@ export async function sendNotificationEmail(
     });
     return { delivered: true };
   } catch (error) {
-    console.error('[notification] email delivery failed:', error);
+    currentLogger().error({ err: error, to: input.to, subject: input.subject }, 'notification email delivery failed');
     return { delivered: false, reason: 'Email delivery failed.' };
   }
 }

@@ -104,6 +104,8 @@ enum AuditAction {
   INCIDENT_ASSIGNED
   ROLE_REQUEST_APPROVED
   ROLE_REQUEST_REJECTED
+  USER_DEACTIVATED
+  USER_REACTIVATED
 }
 
 enum NotificationType {
@@ -117,7 +119,9 @@ enum NotificationType {
   GENERAL
 }
 
-/** Delivery channel a Notification can be routed through (Phase 13). */
+/**
+ * Delivery channel a Notification can be routed through (Phase 13).
+ */
 enum NotificationChannel {
   IN_APP
   EMAIL
@@ -128,7 +132,9 @@ enum NotificationChannel {
 // Phase 3 — Real AI intelligence
 // ---------------------------------------------------------------------------
 
-/** Categories the AI model is asked to classify a report into. */
+/**
+ * Categories the AI model is asked to classify a report into.
+ */
 enum AICategory {
   ROAD_DAMAGE
   STREET_LIGHT
@@ -140,7 +146,9 @@ enum AICategory {
   OTHER
 }
 
-/** Severity vocabulary produced by the AI model (mirrors Severity values). */
+/**
+ * Severity vocabulary produced by the AI model (mirrors Severity values).
+ */
 enum AISeverity {
   LOW
   MEDIUM
@@ -148,7 +156,9 @@ enum AISeverity {
   CRITICAL
 }
 
-/** Immediate safety risk to the public assessed by the AI model. */
+/**
+ * Immediate safety risk to the public assessed by the AI model.
+ */
 enum SafetyRisk {
   NONE
   LOW
@@ -157,7 +167,9 @@ enum SafetyRisk {
   CRITICAL
 }
 
-/** The class of civic asset the AI model believes is damaged/affected. */
+/**
+ * The class of civic asset the AI model believes is damaged/affected.
+ */
 enum InfrastructureType {
   ROAD
   SIDEWALK
@@ -172,7 +184,9 @@ enum InfrastructureType {
   OTHER
 }
 
-/** Lifecycle of a server-side AI analysis run. No duration is simulated. */
+/**
+ * Lifecycle of a server-side AI analysis run. No duration is simulated.
+ */
 enum AIAnalysisStatus {
   PENDING
   PROCESSING
@@ -184,7 +198,9 @@ enum AIAnalysisStatus {
 // Phase 4 — Priority levels
 // ---------------------------------------------------------------------------
 
-/** Band derived from the 0-100 priority engine score. */
+/**
+ * Band derived from the 0-100 priority engine score.
+ */
 enum PriorityLevel {
   LOW
   MEDIUM
@@ -233,39 +249,43 @@ enum KarmaEventType {
 // ---------------------------------------------------------------------------
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
+  id               String             @id @default(cuid())
+  name             String?
+email         String             @unique
   emailVerified DateTime?
+  // Phase 24 — account deactivation. Inactive accounts are treated as logged
+  // out at the session layer (getSessionUser returns null) and cannot perform
+  // any authenticated action until an ADMIN re-activates them.
+  active        Boolean            @default(true)
   image         String?
-  role          UserRole  @default(CITIZEN)
+  role             UserRole           @default(CITIZEN)
   // Privileged role requested at self-service signup (AUTHORITY/ADMIN).
   // Never trusted until an ADMIN approves it — see RoleApprovalStatus.
-  requestedRole UserRole?
-  roleStatus    RoleApprovalStatus @default(APPROVED)
+  requestedRole    UserRole?
+  roleStatus       RoleApprovalStatus @default(APPROVED)
   roleReviewedById String?
   roleReviewedAt   DateTime?
 
-  roleReviewedBy User? @relation("RoleReviewer", fields: [roleReviewedById], references: [id], onDelete: SetNull)
-  roleReviewees  User[] @relation("RoleReviewer")
-  karmaScore    Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  roleReviewedBy User?    @relation("RoleReviewer", fields: [roleReviewedById], references: [id], onDelete: SetNull)
+  roleReviewees  User[]   @relation("RoleReviewer")
+  karmaScore     Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  issues         Issue[]         @relation("IssueReporter")
-  evidence       Evidence[]      @relation("EvidenceUploader")
-  verifications  Verification[]  @relation("VerificationVerifier")
-  escalations    Escalation[]    @relation("EscalationInitiator")
-  authorities    Authority[]     @relation("AuthorityUser")
-  notifications  Notification[]
+  issues                  Issue[]                  @relation("IssueReporter")
+  evidence                Evidence[]               @relation("EvidenceUploader")
+  verifications           Verification[]           @relation("VerificationVerifier")
+  escalations             Escalation[]             @relation("EscalationInitiator")
+  authorities             Authority[]              @relation("AuthorityUser")
+  notifications           Notification[]
   notificationPreferences NotificationPreference[]
-  preferences UserPreferences?
-  auditLogs      AuditLog[]      @relation("AuditActor")
-  votes          Vote[]
-  karmaEvents    KarmaEvent[]
-  accounts       Account[]
-  sessions       Session[]
-  authenticators Authenticator[]
+  preferences             UserPreferences?
+  auditEvents             AuditEvent[]             @relation("AuditActor")
+  votes                   Vote[]
+  karmaEvents             KarmaEvent[]
+  accounts                Account[]
+  sessions                Session[]
+  authenticators          Authenticator[]
 
   @@index([email])
   @@index([role])
@@ -326,15 +346,35 @@ model Authenticator {
 // Civic domain
 // ---------------------------------------------------------------------------
 
-model Authority {
-  id          String   @id @default(cuid())
-  name        String
-  department  String
-  email       String?
-  phone       String?
+/**
+ * A first-class civic department (Phase 23 — Database Model Finalization).
+ * Departments are the canonical routing/ownership unit: an Authority
+ * (operator account + contact) references exactly one Department, and
+ * category-based report routing resolves Departments by name. This model
+ * normalizes what was previously a free-text `Authority.department` string.
+ */
+model Department {
+  id           String   @id @default(cuid())
+  name         String   @unique // canonical department name, e.g. 'Roads & Infrastructure Department'
   jurisdiction String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  authorities Authority[]
+  issues      Issue[]
+  promises    Promise[]
+
+  @@index([name])
+}
+
+model Authority {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  jurisdiction String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Optional link to the user account that acts as this authority's
   // operator (role AUTHORITY). Nullable so multiple departments can exist
@@ -342,33 +382,42 @@ model Authority {
   userId String? @unique
   user   User?   @relation("AuthorityUser", fields: [userId], references: [id], onDelete: SetNull)
 
+  // The canonical Department this authority belongs to (Phase 23). Nullable
+  // so an authority can exist before a department is assigned.
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
   issues      Issue[]
   promises    Promise[]
   escalations Escalation[]
 
-  @@index([department])
+  @@index([departmentId])
 }
 
 model Issue {
-  id          String        @id @default(cuid())
-  publicId    String        @unique // human-facing reference, e.g. CC-1092
-  title       String
-  description String?
-  category    IssueCategory
-  status      IssueStatus   @default(SUBMITTED)
-  severity    Severity?
-  priority    Int? // 0-100; null until a real scoring pipeline exists
-  latitude    Float? // stored for PostGIS
-  longitude   Float? // stored for PostGIS
-  accuracy    Float? // GPS accuracy in metres; null when not captured
-  location    String? // free-text address / landmark / ward
-  contact     String? // reporter follow-up contact (confidential)
-  reporterId  String
-  authorityId String?
+  id           String        @id @default(cuid())
+  publicId     String        @unique // human-facing reference, e.g. CC-1092
+  title        String
+  description  String?
+  category     IssueCategory
+  status       IssueStatus   @default(SUBMITTED)
+  severity     Severity?
+  priority     Int? // 0-100; null until a real scoring pipeline exists
+  latitude     Float? // stored for PostGIS
+  longitude    Float? // stored for PostGIS
+  accuracy     Float? // GPS accuracy in metres; null when not captured
+  location     String? // free-text address / landmark / ward
+  contact      String? // reporter follow-up contact (confidential)
+  reporterId   String
+  authorityId  String?
+  // Phase 23 — denormalized reference to the canonical owning Department.
+  // Redundant with authority.department but avoids a join on every hot list
+  // query and matches the roadmap's direct Issue<->Department relation.
+  departmentId String?
 
   // Phase 4 — duplicate engine + priority engine outputs.
   incidentId    String?
-  incidentMatch Json?  // { incidentId, confidence, band, signals } audit trail
+  incidentMatch Json? // { incidentId, confidence, band, signals } audit trail
   priorityLevel PriorityLevel?
 
   // PostGIS point; created as a GENERATED ALWAYS AS ... geography column by
@@ -376,19 +425,20 @@ model Issue {
   // column so migrate diff does not try to drop it. GIST index also raw SQL.
   geoLocation Unsupported("geography(Point,4326)")?
 
-  reporter  User?      @relation("IssueReporter", fields: [reporterId], references: [id], onDelete: Restrict)
-  authority Authority? @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+  reporter   User?       @relation("IssueReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  authority  Authority?  @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
-  evidence     Evidence[]
+  evidence      Evidence[]
   verifications Verification[]
-  escalations  Escalation[]
-  auditLogs    AuditLog[]
+  escalations   Escalation[]
+  auditEvents   AuditEvent[]
   notifications Notification[]
-  votes        Vote[]
-  karmaEvents  KarmaEvent[]
-  promise      Promise?
-  aiAnalysis   AIAnalysis?
-  incident     Incident? @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  votes         Vote[]
+  karmaEvents   KarmaEvent[]
+  promise       Promise?
+  aiAnalysis    AIAnalysis?
+  incident      Incident?      @relation(fields: [incidentId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -398,6 +448,7 @@ model Issue {
   @@index([category])
   @@index([createdAt])
   @@index([authorityId])
+  @@index([departmentId])
   @@index([incidentId])
   @@index([latitude, longitude])
   @@index([priority])
@@ -406,21 +457,21 @@ model Issue {
 }
 
 model Evidence {
-  id           String       @id @default(cuid())
-  issueId      String
-  type         EvidenceType
-  url          String // stored file reference (dev: /uploads/...; later: object storage)
-  fileName     String?
-  mimeType     String?
-  sizeBytes    Int?
-  metadata     Json?
-  uploadedById String?
+  id             String       @id @default(cuid())
+  issueId        String
+  type           EvidenceType
+  url            String // stored file reference (dev: /uploads/...; later: object storage)
+  fileName       String?
+  mimeType       String?
+  sizeBytes      Int?
+  metadata       Json?
+  uploadedById   String?
   // Phase 4 — perceptual image fingerprint computed server-side (dHash hex).
   // Populated for IMAGE evidence; used unchanged by the duplicate engine.
   perceptualHash String?
 
-  issue   Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  uploader User? @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  issue    Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  uploader User?  @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   verifications Verification[]
 
@@ -431,35 +482,38 @@ model Evidence {
 }
 
 model Promise {
-  id          String        @id @default(cuid())
-  issueId     String        @unique
-  authorityId String?
-  deadline    DateTime
-  status      PromiseStatus @default(OPEN)
-  description String?
+  id           String        @id @default(cuid())
+  issueId      String        @unique
+  authorityId  String?
+  departmentId String?
+  deadline     DateTime
+  status       PromiseStatus @default(OPEN)
+  description  String?
 
-  issue     Issue?     @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  authority Authority? @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+  issue      Issue?      @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  authority  Authority?  @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([authorityId])
+  @@index([departmentId])
   @@index([status])
   @@index([deadline])
 }
 
 model Verification {
-  id          String             @id @default(cuid())
-  issueId     String
-  verifierId  String?
-  evidenceId  String?
-  status      VerificationStatus @default(PENDING)
-  note        String?
+  id         String             @id @default(cuid())
+  issueId    String
+  verifierId String?
+  evidenceId String?
+  status     VerificationStatus @default(PENDING)
+  note       String?
 
-  issue    Issue?     @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  verifier User?      @relation("VerificationVerifier", fields: [verifierId], references: [id], onDelete: SetNull)
-  evidence Evidence?  @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+  issue    Issue?    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  verifier User?     @relation("VerificationVerifier", fields: [verifierId], references: [id], onDelete: SetNull)
+  evidence Evidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -494,7 +548,7 @@ model Escalation {
 // Observability & messaging
 // ---------------------------------------------------------------------------
 
-model AuditLog {
+model AuditEvent {
   id         String      @id @default(cuid())
   actorId    String?
   issueId    String?
@@ -514,7 +568,7 @@ model AuditLog {
   prevHash String?
   hash     String
 
-  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actor User?  @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
@@ -529,13 +583,13 @@ model AuditLog {
 }
 
 model Notification {
-  id        String           @id @default(cuid())
+  id        String              @id @default(cuid())
   userId    String
   issueId   String?
   type      NotificationType
   title     String
   message   String?
-  read      Boolean          @default(false)
+  read      Boolean             @default(false)
   /**
    * Deep-link the notification resolves to (e.g. /dashboard/issues/:id, or
    * /dashboard/settings when the action is preference-related). Null → no action.
@@ -546,7 +600,7 @@ model Notification {
    * never persist a second notification for the same logical occurrence. e.g.
    * "STATUS_CHANGED:issue=<id>:to=RESOLVED".
    */
-  dedupeKey String?          @unique
+  dedupeKey String?             @unique
   /**
    * The channel that produced this persisted row. IN_APP rows are always
    * persisted here; EMAIL/PUSH rows are the delivery record for those channels.
@@ -570,12 +624,12 @@ model Notification {
  * the browser — it is keyed off the authoritative session user id.
  */
 model NotificationPreference {
-  id        String               @id @default(cuid())
+  id        String              @id @default(cuid())
   userId    String
   channel   NotificationChannel
-  enabled   Boolean              @default(true)
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
+  enabled   Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -604,20 +658,20 @@ model RefCounter {
  * A FAILED run always leaves the parent Issue untouched and usable.
  */
 model AIAnalysis {
-  id         String            @id @default(cuid())
-  issueId    String            @unique
-  status     AIAnalysisStatus  @default(PENDING)
-  category   AICategory?
-  severity   AISeverity?
-  confidence Float? // 0-1 model confidence in the classification
-  safetyRisk SafetyRisk?
+  id                 String              @id @default(cuid())
+  issueId            String              @unique
+  status             AIAnalysisStatus    @default(PENDING)
+  category           AICategory?
+  severity           AISeverity?
+  confidence         Float? // 0-1 model confidence in the classification
+  safetyRisk         SafetyRisk?
   infrastructureType InfrastructureType?
-  reasoningSummary String?
-  modelName         String?
-  modelVersion      String?
-  errorMessage      String?
-  startedAt         DateTime?
-  completedAt       DateTime?
+  reasoningSummary   String?
+  modelName          String?
+  modelVersion       String?
+  errorMessage       String?
+  startedAt          DateTime?
+  completedAt        DateTime?
 
   issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
 
@@ -633,13 +687,13 @@ model AIAnalysis {
  * Individual reports remain independent and are never auto-deleted or blocked.
  */
 model Incident {
-  id        String        @id @default(cuid())
-  publicId  String        @unique // human-facing reference, e.g. CC-INC-4
-  title     String // derived from the first report in the cluster
-  category  IssueCategory // current best category for the cluster
-  status    IssueStatus   @default(SUBMITTED)
-  severity  Severity?
-  priority  Int?
+  id            String         @id @default(cuid())
+  publicId      String         @unique // human-facing reference, e.g. CC-INC-4
+  title         String // derived from the first report in the cluster
+  category      IssueCategory // current best category for the cluster
+  status        IssueStatus    @default(SUBMITTED)
+  severity      Severity?
+  priority      Int?
   priorityLevel PriorityLevel?
 
   issues Issue[]
@@ -663,17 +717,17 @@ model Incident {
  * JSON bag of numeric/enum gates, e.g. { "slaPctGte": 80, "statusNotIn": ["RESOLVED","REJECTED"] }.
  */
 model EscalationRule {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  enabled     Boolean  @default(true)
-  priority    Int      @default(0) // lower number evaluated first
-  fromLevel   Int      @default(0) // minimum current escalation level required to trigger (0 = any)
-  targetLevel Int      @default(1) // the ladder step this rule escalates TO
+  id          String    @id @default(cuid())
+  name        String    @unique
+  enabled     Boolean   @default(true)
+  priority    Int       @default(0) // lower number evaluated first
+  fromLevel   Int       @default(0) // minimum current escalation level required to trigger (0 = any)
+  targetLevel Int       @default(1) // the ladder step this rule escalates TO
   minSeverity Severity?
   minPriority Int? // optional 0-100 priority gate
   conditions  Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([enabled, priority])
 }
@@ -682,7 +736,9 @@ model EscalationRule {
 // Phase 14 — User preferences (settings actually working)
 // ---------------------------------------------------------------------------
 
-/** How the user wants the app themed (Phase 14). SYSTEM follows the OS. */
+/**
+ * How the user wants the app themed (Phase 14). SYSTEM follows the OS.
+ */
 enum ThemePreference {
   LIGHT
   DARK
@@ -697,14 +753,14 @@ enum ThemePreference {
  * the Phase 13 channel preferences.
  */
 model UserPreferences {
-  id        String           @id @default(cuid())
-  userId    String           @unique
-  theme     ThemePreference  @default(SYSTEM)
-  language  String           @default("en")
-  weeklyDigest Boolean       @default(false)
-  reportUpdates Boolean       @default(true)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id            String          @id @default(cuid())
+  userId        String          @unique
+  theme         ThemePreference @default(SYSTEM)
+  language      String          @default("en")
+  weeklyDigest  Boolean         @default(false)
+  reportUpdates Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

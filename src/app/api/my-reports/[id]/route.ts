@@ -9,7 +9,7 @@ export interface RouteContext {
 }
 
 const ISSUE_INCLUDE = {
-  authority: true,
+  authority: { include: { department: { select: { name: true } } } },
   promise: true,
   evidence: {
     orderBy: { createdAt: 'asc' as const },
@@ -20,7 +20,8 @@ const ISSUE_INCLUDE = {
       },
     },
   },
-  auditLogs: { orderBy: { createdAt: 'asc' as const } },
+  auditEvents: { orderBy: { createdAt: 'asc' as const } },
+  votes: { select: { type: true } },
 } as const;
 
 /**
@@ -42,7 +43,7 @@ export async function GET(_req: Request, ctx: RouteContext) {
         authority: issue.authority,
         promise: issue.promise,
         evidence: issue.evidence,
-        auditLogs: issue.auditLogs,
+        auditEvents: issue.auditEvents,
         viewerId: viewer.id,
       }),
     });
