@@ -13,7 +13,7 @@ import { Select, Input } from '@/components/ui/Input';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { ErrorState } from '@/components/dashboard/ErrorState';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import { STATUS_COLORS } from '@/components/dashboard/IssuesMapInner';
+import { STATUS_COLORS } from '@/components/dashboard/mapConstants';
 import { CATEGORY_SELECT_OPTIONS, STATUS_LABELS, PRIORITY_LEVEL_LABELS } from '@/lib/issues/mapping';
 import type { IssueListItem } from '@/lib/issues/types';
 import type { MapView } from './CivicMapInner';
@@ -61,6 +61,50 @@ const SCOPE_META: Record<string, ScopeMeta> = {
 const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LEVEL_LABELS).map(([value, label]) => ({ value, label }));
 
+function displayStatusToKey(displayStatus: string): string {
+  const key = displayStatus.replace(/([a-z])([A-Z])/g, '$1$2');
+  return key.charAt(0).toLowerCase() + key.slice(1).replace(/\s/g, '');
+}
+
+interface HotspotSummary {
+  visible: number;
+  hotspots: number;
+  peakCount: number;
+  peakLabel: string | null;
+}
+
+/**
+ * Lightweight hotspot estimate: bucket located reports into ~2km grid cells
+ * (0.02° lat/lng), count cells with >= 2 reports as a hotspot. Cheap enough for
+ * the bounded map dataset and gives the heatmap mode a concrete, data-driven
+ * summary without extra API calls.
+ */
+function summarizeHotspots(points: IssueListItem[]): HotspotSummary {
+  const buckets = new Map<string, number>();
+  for (const p of points) {
+    const key = `${Math.round((p.latitude! * 100) / 2)},${Math.round((p.longitude! * 100) / 2)}`;
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  let hotspots = 0;
+  let peakCount = 0;
+  let peakKey: string | null = null;
+  for (const [key, count] of buckets) {
+    if (count >= 2) hotspots += 1;
+    if (count > peakCount) {
+      peakCount = count;
+      peakKey = key;
+    }
+  }
+  let peakLabel: string | null = null;
+  if (peakKey) {
+    const [ci, cj] = peakKey.split(',').map(Number);
+    const lat = ((ci + 0.5) * 2) / 100;
+    const lng = ((cj + 0.5) * 2) / 100;
+    peakLabel = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+  }
+  return { visible: points.length, hotspots, peakCount, peakLabel };
+}
+
 const LEGEND_ORDER = [
   'critical',
   'atRisk',
@@ -74,11 +118,6 @@ const LEGEND_ORDER = [
   'partiallyResolved',
   'rejected',
 ].filter((key) => STATUS_COLORS[key]);
-
-function displayStatusToKey(displayStatus: string): string {
-  const key = displayStatus.replace(/([a-z])([A-Z])/g, '$1$2');
-  return key.charAt(0).toLowerCase() + key.slice(1).replace(/\s/g, '');
-}
 
 function toDateParam(value: string, endOfDay: boolean): string {
   if (!value) return '';
@@ -134,7 +173,10 @@ export function CivicMap() {
     { refreshInterval: 60000 },
   );
 
-  const located = data?.issues.filter((i) => i.latitude != null && i.longitude != null) ?? [];
+  const located = useMemo(
+    () => data?.issues.filter((i) => i.latitude != null && i.longitude != null) ?? [],
+    [data],
+  );
   const selected = useMemo(
     () => data?.issues.find((i) => i.id === selectedId) ?? null,
     [data, selectedId],
@@ -146,6 +188,11 @@ export function CivicMap() {
   }, [data]);
 
   const hasFilters = Boolean(category || status || priority || from || to || department);
+
+  const hotspotSummary = useMemo<HotspotSummary>(() => {
+    if (view !== 'heatmap') return { visible: 0, hotspots: 0, peakCount: 0, peakLabel: null };
+    return summarizeHotspots(located);
+  }, [view, located]);
   const clearFilters = () => {
     setCategory('');
     setStatus('');
@@ -304,7 +351,58 @@ export function CivicMap() {
 
           {/* Right: selection detail + report list */}
           <div className="space-y-4 min-w-0">
-            {selected ? (
+            {view === 'heatmap' ? (
+              <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+                <CardHeader>
+                  <CardTitle as="h2" className="text-base">Issue Density Analysis</CardTitle>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Geographic concentration of the currently visible reports.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-1.5">
+                    {[
+                      { label: 'High Density', from: 'rgba(245,158,11,0.9)', to: 'rgba(220,38,38,0.95)' },
+                      { label: 'Moderate Density', from: 'rgba(250,204,21,0.8)', to: 'rgba(16,185,129,0.65)' },
+                      { label: 'Low Density', from: 'rgba(59,130,246,0.55)', to: 'rgba(16,185,129,0.65)' },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+                        <span
+                          className="inline-block rounded h-2.5 w-12 shrink-0"
+                          style={{ background: `linear-gradient(90deg, ${row.from}, ${row.to})` }}
+                          aria-hidden="true"
+                        />
+                        <span>{row.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <dl className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-neutral-500 dark:text-neutral-400">Visible Reports</dt>
+                      <dd className="font-medium text-neutral-900 dark:text-white">{hotspotSummary.visible}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-neutral-500 dark:text-neutral-400">Active Hotspots</dt>
+                      <dd className="font-medium text-neutral-900 dark:text-white">{hotspotSummary.hotspots}</dd>
+                    </div>
+                    {hotspotSummary.peakLabel && (
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-neutral-500 dark:text-neutral-400">Highest Concentration</dt>
+                        <dd className="font-mono text-xs text-neutral-900 dark:text-white">
+                          {hotspotSummary.peakLabel}
+                          <span className="text-neutral-400 ml-1">({hotspotSummary.peakCount} reports)</span>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                  {located.length === 0 && (
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-dark-border pt-3">
+                      No located reports to analyse for the current filters.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : selected ? (
               <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
                 <CardHeader className="flex flex-row items-start justify-between gap-2">
                   <div className="min-w-0">

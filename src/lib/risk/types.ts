@@ -26,6 +26,8 @@ export interface RiskHotspot {
   riskLevel: RiskLevel;
   /** Number of active (unresolved) issues. */
   activeIncidents: number;
+  /** Number of active issues classified CRITICAL severity. */
+  criticalIssues: number;
   /** Total issues in the time window. */
   totalIncidents: number;
   /** Number of repeat/recurring incidents. */
@@ -60,6 +62,8 @@ export interface WardRiskSummary {
   riskScore: number;
   riskLevel: RiskLevel;
   activeIncidents: number;
+  /** Number of active issues classified CRITICAL severity. */
+  criticalIssues: number;
   totalIncidents: number;
   repeatIssues: number;
   slaBreaches: number;

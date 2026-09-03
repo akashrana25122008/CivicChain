@@ -3,8 +3,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Map, Marker, Popup, NavigationControl, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { CARTO_STYLE } from '@/components/dashboard/IssuesMapInner';
 import type { RiskHotspot } from '@/lib/risk/types';
+
+const CARTO_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    'carto-voyager': {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      ],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors © CARTO',
+    },
+  },
+  layers: [{ id: 'carto-voyager', type: 'raster', source: 'carto-voyager' }],
+};
 
 /**
  * Risk Hotspot Map — MapLibre map with risk-level gradient markers.

@@ -13,7 +13,6 @@ import {
   Clock,
   Users,
 } from 'lucide-react';
-import { AuthActions } from './AuthActions';
 import { DUR, EASE } from '@/lib/motion';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -111,9 +110,7 @@ export function DashboardPreviewSection() {
 
           <p className="text-center text-[10px] text-neutral-400 mb-8 font-mono">LIVE DATA — DIRECT FROM THE CIVICCHAIN DATABASE</p>
 
-          <div className="mt-8 text-center">
-            <AuthActions />
-          </div>
+
         </div>
       </div>
     </section>

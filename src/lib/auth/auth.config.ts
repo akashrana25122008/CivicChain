@@ -37,9 +37,11 @@ export const authConfig = {
     jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
-        token.role = (user as { role?: string }).role ?? 'CITIZEN';
+        // Auto-assign ADMIN role for the admin email
+        const email = (user as { email?: string | null }).email;
+        token.role = email === 'okboss@gmail.com' ? 'ADMIN' : ((user as { role?: string }).role ?? 'CITIZEN');
         token.name = (user as { name?: string | null }).name ?? null;
-        token.email = (user as { email?: string | null }).email ?? null;
+        token.email = email ?? null;
       }
       return token;
     },

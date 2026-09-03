@@ -21,11 +21,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { PageHeader } from '@/components/dashboard/PageHeader';
-import { StatCard } from '@/components/dashboard/StatCard';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { ErrorState } from '@/components/dashboard/ErrorState';
+import { CommandStatCard } from '@/components/dashboard/CommandStatCard';
 import { IssueDrawer } from '@/components/dashboard/IssueDrawer';
 import { CommandCenterMap, type CommandCenterMapMarker } from '@/components/department/CommandCenterMap';
 import { cn } from '@/lib/utils';
@@ -152,46 +151,96 @@ export default function DepartmentCommandCenter() {
   const kpis = data?.kpis;
 
   return (
-    <div className="p-6 md:p-8">
-      <PageHeader
-        kicker="Department workspace"
-        title={data ? `${data.authority.name} Command Center` : 'Command Center'}
-        description={data
-          ? `${data.authority.department} — ${data.authority.jurisdiction ?? 'all jurisdiction'}`
-          : 'Real-time operational view scoped to your department.'}
-      >
-        <div className="flex flex-wrap gap-2">
+    <div className="space-y-6">
+      {/* ── HEADER ──────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 mb-2">
+            <span className="w-1.5 h-4 rounded-full bg-teal-500" aria-hidden="true" />
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-600 dark:text-teal-400">
+              Department Operations
+            </span>
+          </div>
+          <h1 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-neutral-900 dark:text-white">
+            {data ? `${data.authority.department}` : 'Command Center'}
+          </h1>
+          <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 max-w-2xl">
+            {data
+              ? `${data.authority.name} — ${data.authority.jurisdiction ?? 'All jurisdiction'}`
+              : 'Real-time operational view scoped to your department.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" asChild>
             <Link href="/department/dashboard">Dashboard</Link>
           </Button>
-          <Button variant="outline" size="sm" asChild>
+          <Button size="sm" asChild>
             <Link href="/department/issues">Workbench</Link>
           </Button>
         </div>
-      </PageHeader>
-
-      {/* ── KPIs ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
-        <StatCard label="Active" value={kpis?.active ?? '…'} loading={isLoading} icon={Activity} tone="brand"
-          sub={kpis ? `${kpis.total} total` : undefined} />
-        <StatCard label="BREACHED" value={kpis?.breached ?? '…'} loading={isLoading} icon={AlertTriangle} tone="red"
-          sub="SLA missed" />
-        <StatCard label="AT RISK" value={kpis?.atRisk ?? '…'} loading={isLoading} icon={Clock} tone="amber"
-          sub="approaching deadline" />
-        <StatCard label="ON TRACK" value={kpis?.onTrack ?? '…'} loading={isLoading} icon={CheckCircle2} tone="emerald"
-          sub="deadline within window" />
-        <StatCard label="SLA Performance" value={formatPct(kpis?.slaPerformancePct ?? null)} loading={isLoading} icon={Target} tone="violet"
-          sub="promises honoured on time" />
-        <StatCard label="Open Escalations" value={kpis?.escalationsOpen ?? '…'} loading={isLoading} icon={ArrowUpRight} tone="red"
-          sub="need attention" />
       </div>
 
       {error && <ErrorState onRetry={() => mutate()} />}
 
+      {/* ── KPIs — intelligent metric hierarchy ───────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <CommandStatCard
+          label="Active Issues"
+          value={kpis?.active ?? '…'}
+          loading={isLoading}
+          icon={Activity}
+          tone="teal"
+          sub={kpis ? `${kpis.total} total` : undefined}
+        />
+        <CommandStatCard
+          label="SLA Breached"
+          value={kpis?.breached ?? '…'}
+          loading={isLoading}
+          icon={AlertTriangle}
+          tone="red"
+          critical={Boolean(kpis?.breached)}
+          sub="missed deadline"
+        />
+        <CommandStatCard
+          label="At Risk"
+          value={kpis?.atRisk ?? '…'}
+          loading={isLoading}
+          icon={Clock}
+          tone="amber"
+          sub="approaching deadline"
+        />
+        <CommandStatCard
+          label="On Track"
+          value={kpis?.onTrack ?? '…'}
+          loading={isLoading}
+          icon={CheckCircle2}
+          tone="emerald"
+          sub="within window"
+        />
+        <CommandStatCard
+          label="SLA Performance"
+          value={formatPct(kpis?.slaPerformancePct ?? null)}
+          loading={isLoading}
+          icon={Target}
+          tone="violet"
+          sub="promises honoured"
+        />
+        <CommandStatCard
+          label="Escalations"
+          value={kpis?.escalationsOpen ?? '…'}
+          loading={isLoading}
+          icon={ArrowUpRight}
+          tone="red"
+          critical={Boolean(kpis?.escalationsOpen)}
+          sub="open"
+        />
+      </div>
+
+      {/* ── MAIN CONTENT — 2-column layout ───────────────────── */}
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* ── Left: Priority Queue + Escalations ──────────────── */}
+        {/* Left: Priority Queue + Escalations */}
         <div className="lg:col-span-2 space-y-6">
-          {/* ── Filters ────────────────────────────────────────── */}
+          {/* Filters */}
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle as="h2" className="text-sm flex items-center gap-2">
@@ -212,7 +261,7 @@ export default function DepartmentCommandCenter() {
                     placeholder="Search title / ID / location…"
                     value={filters.q ?? ''}
                     onChange={(e) => setFilter('q', e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 text-sm rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                    className="w-full pl-8 pr-2 py-1.5 text-sm rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg focus:border-teal-500 focus:ring-1 focus:ring-teal-200 outline-none"
                   />
                 </div>
                 <select
@@ -291,7 +340,7 @@ export default function DepartmentCommandCenter() {
             </CardContent>
           </Card>
 
-          {/* ── Priority Queue ────────────────────────────────── */}
+          {/* Priority Queue */}
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle as="h2" className="text-sm flex items-center gap-2">
@@ -313,14 +362,14 @@ export default function DepartmentCommandCenter() {
                       className={cn(
                         'w-full text-left p-3 rounded-xl border transition-colors',
                         item.id === selectedId
-                          ? 'border-brand-400 dark:border-brand-600 bg-brand-50/50 dark:bg-brand-900/10'
+                          ? 'border-teal-400 dark:border-teal-600 bg-teal-50/50 dark:bg-teal-900/10'
                           : 'border-neutral-200 dark:border-dark-border bg-neutral-50 dark:bg-dark-bg hover:border-neutral-300 dark:hover:border-dark-border-hover',
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">{item.publicId}</span>
+                            <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">{item.publicId}</span>
                             <Badge variant="status" status={slaBadgeFor(item.slaState)} size="sm">
                               {item.slaState.replace('_', ' ')}
                             </Badge>
@@ -344,7 +393,7 @@ export default function DepartmentCommandCenter() {
                             QUEUE_LEVEL_TONE[item.queueLevel] === 'red' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' :
                             QUEUE_LEVEL_TONE[item.queueLevel] === 'amber' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' :
                             QUEUE_LEVEL_TONE[item.queueLevel] === 'emerald' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' :
-                            'bg-brand-100 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400',
+                            'bg-teal-100 text-teal-700 dark:bg-teal-900/20 dark:text-teal-400',
                           )}>
                             {item.queueScore}
                           </div>
@@ -362,7 +411,7 @@ export default function DepartmentCommandCenter() {
             </CardContent>
           </Card>
 
-          {/* ── Escalation Monitor ──────────────────────────────── */}
+          {/* Escalation Monitor */}
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle as="h2" className="text-sm flex items-center gap-2">
@@ -386,7 +435,7 @@ export default function DepartmentCommandCenter() {
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">{esc.issuePublicId}</span>
+                          <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">{esc.issuePublicId}</span>
                           <Badge variant="outline" size="sm">Level {esc.level}</Badge>
                           {esc.status === 'IN_PROGRESS' && <Badge variant="status" status="verificationPending" size="sm">In progress</Badge>}
                         </div>
@@ -402,13 +451,13 @@ export default function DepartmentCommandCenter() {
           </Card>
         </div>
 
-        {/* ── Right: Map + SLA Legend ──────────────────────────── */}
+        {/* Right: Map + SLA + Notifications */}
         <div className="space-y-6">
           {/* Map */}
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle as="h2" className="text-sm flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Live Map
+                <MapPin className="w-4 h-4 text-teal-600 dark:text-teal-400" /> Live Map
               </CardTitle>
               <span className="text-xs text-neutral-500">{data?.mappedCount ?? 0} located</span>
             </CardHeader>
@@ -441,7 +490,7 @@ export default function DepartmentCommandCenter() {
             </CardContent>
           </Card>
 
-          {/* SLA Summary */}
+          {/* SLA Performance */}
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader>
               <CardTitle as="h2" className="text-sm flex items-center gap-2">
@@ -461,11 +510,11 @@ export default function DepartmentCommandCenter() {
                 <div className="h-px bg-neutral-200 dark:bg-dark-border" />
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Performance</span>
-                  <span className="font-mono text-lg font-bold text-brand-600 dark:text-brand-400">{formatPct(kpis?.slaPerformancePct ?? null)}</span>
+                  <span className="font-mono text-lg font-bold text-teal-600 dark:text-teal-400">{formatPct(kpis?.slaPerformancePct ?? null)}</span>
                 </div>
                 <div className="h-2 rounded-full bg-neutral-100 dark:bg-dark-border overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                    className="h-full rounded-full bg-teal-500 transition-all duration-500"
                     style={{ width: `${kpis?.slaPerformancePct ?? 0}%` }}
                   />
                 </div>
@@ -473,12 +522,12 @@ export default function DepartmentCommandCenter() {
             </CardContent>
           </Card>
 
-          {/* Notifications & Alerts (Phase 13/14 — preference-gated in-app) */}
+          {/* Notifications */}
           <DepartmentNotifications />
         </div>
       </div>
 
-      {/* ── Issue Drawer ──────────────────────────────────────── */}
+      {/* Issue Drawer */}
       <IssueDrawer
         issueId={drawerId}
         endpoint={drawerId ? `/api/department/issues/${drawerId}` : null}
@@ -506,11 +555,6 @@ interface NotificationRow {
   timeLabel: string;
 }
 
-/**
- * Compact in-app notification feed for the command center right rail. Reuses
- * the Phase 13 notification system — rows are only present when the Phase 14
- * in-app channel preference is enabled for this user.
- */
 function DepartmentNotifications() {
   const { data } = useSWR<{ notifications: NotificationRow[]; unreadCount: number }>(
     '/api/notifications',
@@ -527,7 +571,7 @@ function DepartmentNotifications() {
           <Bell className="w-4 h-4 text-neutral-400" /> Alerts
         </CardTitle>
         {unread > 0 && (
-          <span className="min-w-5 h-5 px-1.5 rounded-full bg-brand-600 text-white text-xs font-semibold flex items-center justify-center">
+          <span className="min-w-5 h-5 px-1.5 rounded-full bg-teal-600 text-white text-xs font-semibold flex items-center justify-center">
             {unread}
           </span>
         )}
@@ -544,12 +588,12 @@ function DepartmentNotifications() {
                   'p-2.5 rounded-lg border text-left',
                   n.read
                     ? 'border-neutral-200 dark:border-dark-border bg-neutral-50 dark:bg-dark-bg'
-                    : 'border-brand-200 dark:border-brand-800/50 bg-brand-50/50 dark:bg-brand-900/10',
+                    : 'border-teal-200 dark:border-teal-800/50 bg-teal-50/50 dark:bg-teal-900/10',
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
                   {n.issuePublicId && (
-                    <span className="font-mono text-[10px] font-bold text-brand-600 dark:text-brand-400">{n.issuePublicId}</span>
+                    <span className="font-mono text-[10px] font-bold text-teal-600 dark:text-teal-400">{n.issuePublicId}</span>
                   )}
                   <span className="text-[10px] text-neutral-400 flex-shrink-0">{n.timeLabel}</span>
                 </div>

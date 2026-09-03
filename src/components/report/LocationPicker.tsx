@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Map, Marker, NavigationControl, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapPin, Loader2, Search, Crosshair } from 'lucide-react';
-import { CARTO_STYLE } from '@/components/dashboard/IssuesMapInner';
+import { CARTO_STYLE } from '@/components/dashboard/mapConstants';
 import { cn } from '@/lib/utils';
 
 interface GeoResult {

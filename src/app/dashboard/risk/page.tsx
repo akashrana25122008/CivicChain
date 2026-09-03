@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
-import { RiskHeatmap } from '@/components/dashboard/RiskHeatmap';
+import { RiskHotspotMap } from '@/components/dashboard/RiskHotspotMap';
+import { RiskSurface } from '@/components/three/RiskSurface';
 import {
   useRiskSummary, useWardRisks, useRiskHotspots, useWardDetail,
 } from '@/components/dashboard/riskHooks';
@@ -205,6 +206,7 @@ function WardRiskTable({ wards, onSelect }: { wards: WardRiskSummary[]; onSelect
 
 export default function RiskPage() {
   const [days, setDays] = useState<number>(30);
+  const [view, setView] = useState<'heatmap' | 'hotspots' | 'surface'>('hotspots');
   const [riskLevel, setRiskLevel] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [departmentId, setDepartmentId] = useState<string>('');
@@ -215,7 +217,7 @@ export default function RiskPage() {
 
   const { data: summary, isLoading: summaryLoading, error: summaryError } = useRiskSummary(common);
   const { data: wardsData, isLoading: wardsLoading, error: wardsError } = useWardRisks({ ...common, limit: 50 });
-  const { data: hotspotData, isLoading: hotspotLoading, error: hotspotError } = useRiskHotspots({ ...common, limit: 10 });
+  const { data: hotspotData, isLoading: hotspotLoading, error: hotspotError } = useRiskHotspots({ ...common, limit: 50 });
   const { data: deptData } = useSWR<{ departments: Array<{ id: string; name: string }> }>(
     '/api/risk/departments',
     (url: string) => fetch(url).then(r => r.json()),
@@ -401,16 +403,75 @@ export default function RiskPage() {
                   <CardTitle as="h3" className="text-lg">Risk Hotspot Map</CardTitle>
                   <CardDescription>Areas of concentrated civic risk</CardDescription>
                 </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    key="heatmap"
+                    type="button"
+                    onClick={() => setView('heatmap')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors',
+                      view === 'heatmap'
+                        ? 'bg-brand-700 text-white border-brand-700 dark:bg-brand-600 dark:border-brand-600'
+                        : 'bg-white dark:bg-dark-bg-card text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-dark-border',
+                    )}
+                  >
+                    Risk Heatmap
+                  </button>
+                  <button
+                    key="hotspots"
+                    type="button"
+                    onClick={() => setView('hotspots')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors',
+                      view === 'hotspots'
+                        ? 'bg-brand-700 text-white border-brand-700 dark:bg-brand-600 dark:border-brand-600'
+                        : 'bg-white dark:bg-dark-bg-card text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-dark-border',
+                    )}
+                  >
+                    Hotspots
+                  </button>
+                  <button
+                    key="surface"
+                    type="button"
+                    onClick={() => setView('surface')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors',
+                      view === 'surface'
+                        ? 'bg-brand-700 text-white border-brand-700 dark:bg-brand-600 dark:border-brand-600'
+                        : 'bg-white dark:bg-dark-bg-card text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-dark-border',
+                    )}
+                  >
+                    3D Surface
+                  </button>
+                </div>
               </CardHeader>
               <CardContent>
-                {hotspots.length > 0 ? (
-                  <div className="h-[320px] rounded-xl overflow-hidden">
-                    <RiskHeatmap hotspots={hotspots} />
+                {view === 'surface' ? (
+                  <div className="h-[350px] md:h-[420px]">
+                    <RiskSurface
+                      areas={wards.map((w) => ({
+                        id: w.wardId,
+                        name: w.wardName,
+                        lat: w.latitude,
+                        lng: w.longitude,
+                        riskScore: w.riskScore,
+                        riskLevel: w.riskLevel,
+                        activeIncidents: w.activeIncidents,
+                      }))}
+                      center={{ lat: 27.4924, lng: 78.0322 }}
+                      className="w-full h-full"
+                    />
                   </div>
                 ) : (
-                  <div className="h-[320px] rounded-xl border border-dashed border-neutral-300 dark:border-dark-border flex items-center justify-center text-sm text-neutral-400">
-                    No hotspot data available for this period.
-                  </div>
+                  <RiskHotspotMap
+                    hotspots={hotspots}
+                    days={days}
+                    onDaysChange={setDays}
+                    view={view as 'heatmap' | 'hotspots'}
+                    onSelect={(hotspot) => {
+                      console.log('Hotspot selected:', hotspot?.areaName, hotspot?.riskScore);
+                    }}
+                  />
                 )}
               </CardContent>
             </Card>

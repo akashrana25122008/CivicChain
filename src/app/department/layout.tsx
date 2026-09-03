@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/server/session';
-import { AppShell } from '@/components/layout/AppShell';
+import { DepartmentShell } from '@/components/layout/DepartmentShell';
 
 /** Authority workspace. Server-side role gate — never trust the client. */
 export default async function DepartmentLayout({
@@ -13,5 +13,5 @@ export default async function DepartmentLayout({
   if (user.role !== 'AUTHORITY') {
     redirect(user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
   }
-  return <AppShell>{children}</AppShell>;
+  return <DepartmentShell>{children}</DepartmentShell>;
 }

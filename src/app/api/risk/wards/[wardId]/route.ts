@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
     const departmentId = sp.get('departmentId');
     const days = sp.get('days') ? Number(sp.get('days')) : undefined;
 
-    if (days != null && (!Number.isFinite(days) || days <= 0)) {
+    if (days != null && (!Number.isFinite(days) || days < 0)) {
       return NextResponse.json(
         { error: { code: 'INVALID_INPUT', message: 'Invalid days.' } },
         { status: 400 },

@@ -71,9 +71,10 @@ interface GroupedArea {
 
 function dateRange(days: number): { from: Date; to: Date; prevFrom: Date; prevTo: Date } {
   const to = new Date();
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  // days <= 0 means "All Time": no lower bound instead of an empty window.
+  const from = days > 0 ? new Date(to.getTime() - days * 24 * 60 * 60 * 1000) : new Date(0);
   const prevTo = new Date(from.getTime());
-  const prevFrom = new Date(prevTo.getTime() - days * 24 * 60 * 60 * 1000);
+  const prevFrom = days > 0 ? new Date(prevTo.getTime() - days * 24 * 60 * 60 * 1000) : new Date(0);
   return { from, to, prevFrom, prevTo };
 }
 
@@ -223,6 +224,7 @@ function aggregateArea(area: GroupedArea, now: Date) {
   return {
     severityScore,
     issueCount: activeIssues.length,
+    criticalCount: activeIssues.filter(i => i.severity === 'CRITICAL').length,
     totalIssues: issues.length,
     repeatCount,
     slaBreaches,
@@ -358,6 +360,7 @@ export async function fetchAreaRisks(
       riskScore: riskResult.score,
       riskLevel: riskResult.level,
       activeIncidents: agg.issueCount,
+      criticalIssues: agg.criticalCount,
       totalIncidents: agg.totalIssues,
       repeatIssues: agg.repeatCount,
       slaBreaches: agg.slaBreaches,
@@ -414,6 +417,7 @@ export function toHotspot(w: WardRiskSummary): RiskHotspot {
     riskScore: w.riskScore,
     riskLevel: w.riskLevel,
     activeIncidents: w.activeIncidents,
+    criticalIssues: w.criticalIssues,
     totalIncidents: w.totalIncidents,
     repeatIncidentCount: w.repeatIssues,
     slaBreaches: w.slaBreaches,
@@ -590,6 +594,7 @@ export async function fetchWardDetail(
     riskScore: riskResult.score,
     riskLevel: riskResult.level,
     activeIncidents: agg.issueCount,
+    criticalIssues: agg.criticalCount,
     totalIncidents: agg.totalIssues,
     repeatIssues: agg.repeatCount,
     slaBreaches: agg.slaBreaches,

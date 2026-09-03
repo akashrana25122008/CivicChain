@@ -1,13 +1,14 @@
 'use client';
 
 import useSWR from 'swr';
-import { RefreshCw, Database, MapPin, KeyRound, Mail, FolderArchive, Activity, Bell } from 'lucide-react';
+import { RefreshCw, Database, MapPin, KeyRound, Mail, FolderArchive, Activity, Bell, Box } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/dashboard/PageHeader';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { ErrorState } from '@/components/dashboard/ErrorState';
+import { HealthNetwork } from '@/components/three/HealthNetwork';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -100,6 +101,32 @@ export default function AdminHealth() {
           {data?.overall?.note && <span className="text-sm text-neutral-500">{data.overall.note}</span>}
           <span className="text-sm text-neutral-500">probed on demand</span>
         </div>
+      )}
+
+      {/* 3D Service Network Visualization */}
+      {data && (
+        <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border mb-6">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle as="h2" className="text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
+              <Box className="w-4 h-4 text-violet-500" />
+              Service Network Topology
+            </CardTitle>
+            <span className="text-xs text-neutral-400 dark:text-neutral-500">3D view of service connectivity and health</span>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="h-[300px] md:h-[380px]">
+              <HealthNetwork
+                services={CHECK_META.map(({ key, title }) => ({
+                  key,
+                  label: title,
+                  ok: data.checks[key]?.ok ?? false,
+                  status: data.checks[key]?.status,
+                }))}
+                className="w-full h-full"
+              />
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">

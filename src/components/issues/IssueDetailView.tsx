@@ -24,6 +24,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import type { ApiIssueResponse } from '@/lib/issues/types';
+import { IssuesMap } from '@/components/dashboard/IssuesMap';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -227,6 +228,37 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
               </CardHeader>
               <CardContent>
                 <p className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap text-sm">{issue.description}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {issue.hasLocation && issue.latitude != null && issue.longitude != null && (
+            <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle as="h2" className="text-lg flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-brand-500" />
+                  Location
+                </CardTitle>
+                <Link
+                  href={`https://maps.google.com/?q=${issue.latitude},${issue.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+                >
+                  Directions
+                </Link>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="aspect-[16/7] sm:aspect-[16/6]">
+                  <IssuesMap
+                    issues={[
+                      {
+                        ...issue,
+                        title: `${issue.publicId} — ${issue.title}`,
+                      },
+                    ]}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}

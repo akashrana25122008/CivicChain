@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Map, Marker, Popup, NavigationControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { CARTO_STYLE } from '@/components/dashboard/IssuesMapInner';
+import { CARTO_STYLE } from '@/components/dashboard/mapConstants';
 
 const SLA_COLORS: Record<string, string> = {
   BREACHED: '#ef4444',

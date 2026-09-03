@@ -2,15 +2,19 @@
 
 import { useCallback, useState } from 'react';
 import useSWR from 'swr';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import { Search, SlidersHorizontal, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
-import { PageHeader } from '@/components/dashboard/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { TableFrame, Pagination } from '@/components/dashboard/TableFrame';
 import { IssueDrawer } from '@/components/dashboard/IssueDrawer';
 import { cn } from '@/lib/utils';
 import type { IssueListItem } from '@/lib/issues/types';
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+const fetcher = (url: string) => fetch(url).then((res) => {
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+  return res.json();
+});
 
 const STATUS_FILTERS = [
   { value: '', label: 'All statuses' },
@@ -56,52 +60,85 @@ export default function DepartmentIssues() {
     setPage(1);
   };
   const onPage = useCallback((next: number) => setPage(next), []);
+  const hasFilters = Boolean(q || status);
 
   return (
-    <div className="p-6 md:p-8">
-      <PageHeader
-        kicker="Department workspace"
-        title="Issues Workbench"
-        description="Every report routed to your department, with full evidence review and escalation tools."
-      />
-
-      <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" aria-hidden="true" />
-          <input
-            value={q}
-            onChange={(e) => onQ(e.target.value)}
-            placeholder="Search title, ID, location…"
-            className="w-full rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card pl-9 pr-3 py-2 text-sm text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            aria-label="Search reports"
-          />
+    <div className="space-y-6">
+      {/* ── HEADER ──────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 mb-2">
+            <span className="w-1.5 h-4 rounded-full bg-teal-500" aria-hidden="true" />
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-600 dark:text-teal-400">
+              Department Operations
+            </span>
+          </div>
+          <h1 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-neutral-900 dark:text-white">
+            Issues Workbench
+          </h1>
+          <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 max-w-2xl">
+            Every report routed to your department, with full evidence review and escalation tools.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SlidersHorizontal className="w-4 h-4 text-neutral-400 hidden sm:block" aria-hidden="true" />
-          <select
-            value={status}
-            onChange={(e) => onStatus(e.target.value)}
-            className="rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-            aria-label="Filter by status"
-          >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-          <select
-            value={sort}
-            onChange={(e) => onSort(e.target.value)}
-            className="rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-            aria-label="Sort order"
-          >
-            {SORTS.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
+          <Button variant="outline" size="sm" asChild>
+            <a href="/department/command-center">Command Center</a>
+          </Button>
         </div>
       </div>
 
-      <CardFrame>
+      {/* ── FILTERS ─────────────────────────────────────────────── */}
+      <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle as="h2" className="text-sm flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-neutral-400" /> Filters
+          </CardTitle>
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={() => { setQ(''); setStatus(''); setPage(1); }}>
+              <XCircle className="w-3 h-3 mr-1" /> Clear
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col lg:flex-row gap-3">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" aria-hidden="true" />
+              <input
+                value={q}
+                onChange={(e) => onQ(e.target.value)}
+                placeholder="Search title, ID, location…"
+                className="w-full rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card pl-9 pr-3 py-2 text-sm text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                aria-label="Search reports"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={status}
+                onChange={(e) => onStatus(e.target.value)}
+                className="rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                aria-label="Filter by status"
+              >
+                {STATUS_FILTERS.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              <select
+                value={sort}
+                onChange={(e) => onSort(e.target.value)}
+                className="rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-3 py-2 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                aria-label="Sort order"
+              >
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── TABLE ───────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card overflow-hidden">
         <TableFrame
           columns={[
             { key: 'id', label: 'Report' },
@@ -130,9 +167,9 @@ export default function DepartmentIssues() {
           }
         >
           {(data?.issues ?? []).map((issue) => (
-            <tr key={issue.id} onClick={() => setSelected(issue.id)} className="cursor-pointer hover:bg-neutral-50 dark:hover:bg-dark-bg/60 transition-colors">
+            <tr key={issue.id} onClick={() => setSelected(issue.id)} className="cursor-pointer hover:bg-teal-50/30 dark:hover:bg-teal-900/5 transition-colors">
               <td className="px-4 py-3">
-                <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">{issue.publicId}</span>
+                <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">{issue.publicId}</span>
               </td>
               <td className="px-4 py-3 max-w-[280px]">
                 <p className="text-sm text-neutral-800 dark:text-neutral-200 truncate">{issue.title}</p>
@@ -160,8 +197,9 @@ export default function DepartmentIssues() {
             </tr>
           ))}
         </TableFrame>
-      </CardFrame>
+      </div>
 
+      {/* ── ISSUE DRAWER ─────────────────────────────────────────── */}
       <IssueDrawer
         key={selected ?? 'closed'}
         issueId={selected}
@@ -172,14 +210,6 @@ export default function DepartmentIssues() {
         canVerify
         canEscalate
       />
-    </div>
-  );
-}
-
-function CardFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-bg-card overflow-hidden">
-      {children}
     </div>
   );
 }

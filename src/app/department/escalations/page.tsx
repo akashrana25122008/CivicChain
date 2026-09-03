@@ -6,7 +6,6 @@ import { AlertTriangle, ArrowUpRight, CheckCircle2, PlayCircle } from 'lucide-re
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { PageHeader } from '@/components/dashboard/PageHeader';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { ErrorState } from '@/components/dashboard/ErrorState';
@@ -57,18 +56,29 @@ export default function DepartmentEscalations() {
   const closed = data?.escalations.filter((e) => e.status === 'RESOLVED') ?? [];
 
   return (
-    <div className="p-6 md:p-8">
-      <PageHeader
-        kicker="Department workspace"
-        title="Escalations"
-        description="Reports raised up a level. Each escalation carries its own audit trail; closing one records who closed it and when."
-      />
+    <div className="space-y-6">
+      {/* ── HEADER ──────────────────────────────────────────────── */}
+      <div>
+        <div className="inline-flex items-center gap-2 mb-2">
+          <span className="w-1.5 h-4 rounded-full bg-teal-500" aria-hidden="true" />
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-600 dark:text-teal-400">
+            Department Operations
+          </span>
+        </div>
+        <h1 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-neutral-900 dark:text-white">
+          Escalations
+        </h1>
+        <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 max-w-2xl">
+          Reports raised up a level. Each escalation carries its own audit trail; closing one records who closed it and when.
+        </p>
+      </div>
 
       {error && <ErrorState onRetry={() => mutate()} />}
 
-      <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border mb-6">
+      {/* ── OPEN ESCALATIONS ────────────────────────────────────── */}
+      <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle as="h2" className="text-lg flex items-center gap-2">
+          <CardTitle as="h2" className="text-sm flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-500" /> Open
           </CardTitle>
           <span className="text-xs text-neutral-500">{open.length}</span>
@@ -85,12 +95,12 @@ export default function DepartmentEscalations() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">{esc.issuePublicId}</span>
+                        <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">{esc.issuePublicId}</span>
                         <Badge variant="outline" size="sm">Level {esc.level}</Badge>
                         {esc.status === 'IN_PROGRESS' && <Badge variant="status" status="verificationPending" size="sm">In progress</Badge>}
                       </div>
                       <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 mt-1">{esc.issueTitle}</p>
-                      {esc.reason && <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">“{esc.reason}”</p>}
+                      {esc.reason && <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">&ldquo;{esc.reason}&rdquo;</p>}
                       <p className="text-xs text-neutral-500 mt-1.5">raised by {esc.caller ?? 'a department member'} · {esc.timeLabel}</p>
                     </div>
                     <div className="flex gap-2 flex-shrink-0 pt-1">
@@ -117,9 +127,10 @@ export default function DepartmentEscalations() {
         </CardContent>
       </Card>
 
+      {/* ── HISTORY ──────────────────────────────────────────────── */}
       <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle as="h2" className="text-lg flex items-center gap-2">
+          <CardTitle as="h2" className="text-sm flex items-center gap-2">
             <ArrowUpRight className="w-4 h-4 text-neutral-400" /> History
           </CardTitle>
           <span className="text-xs text-neutral-500">{closed.length} closed</span>
@@ -146,8 +157,9 @@ export default function DepartmentEscalations() {
         </CardContent>
       </Card>
 
+      {/* ── FLOAT ────────────────────────────────────────────────── */}
       {float && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-neutral-900 text-white dark:bg-dark-bg-card dark:text-neutral-100 border border-neutral-200 dark:border-dark-border text-sm shadow-lg z-50">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-teal-900 text-white dark:bg-dark-bg-card dark:text-neutral-100 border border-teal-200 dark:border-dark-border text-sm shadow-lg z-50">
           {float}
         </div>
       )}

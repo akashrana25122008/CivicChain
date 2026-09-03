@@ -124,12 +124,6 @@ function LandingNavActions({ mobile }: { mobile?: boolean }) {
   return (
     <div className={mobile ? 'flex flex-col gap-2' : 'flex items-center gap-2'}>
       <Button size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
-        <Link href={homeFor(role)} className="group flex items-center justify-center gap-2">
-          Open Dashboard
-          <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
-        </Link>
-      </Button>
-      <Button variant="secondary" size={mobile ? 'lg' : 'sm'} asChild className={mobile ? 'w-full' : ''}>
         <Link href="/report" className="group flex items-center justify-center gap-2">
           Report an Issue
           <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />

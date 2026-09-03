@@ -3,7 +3,6 @@
 import useSWR from 'swr';
 import { TrendingUp, Clock, ShieldCheck, XCircle, Timer, AlertTriangle, CheckCircle2, BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { PageHeader } from '@/components/dashboard/PageHeader';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { ErrorState } from '@/components/dashboard/ErrorState';
@@ -58,14 +57,27 @@ export default function DepartmentPerformance() {
   const maxDay = Math.max(1, ...(data?.byDay.map((b) => b.created) ?? []));
 
   return (
-    <div className="p-6 md:p-8">
-      <PageHeader
-        kicker="Department workspace"
-        title="Performance"
-        description="Resolution metrics and workload trends — derived from the real audit trail and report data."
-      />
+    <div className="space-y-6">
+      {/* ── HEADER ──────────────────────────────────────────────── */}
+      <div>
+        <div className="inline-flex items-center gap-2 mb-2">
+          <span className="w-1.5 h-4 rounded-full bg-teal-500" aria-hidden="true" />
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-600 dark:text-teal-400">
+            Department Operations
+          </span>
+        </div>
+        <h1 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-neutral-900 dark:text-white">
+          Performance
+        </h1>
+        <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 max-w-2xl">
+          Resolution metrics and workload trends — derived from the real audit trail and report data.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4 mb-8">
+      {error && <ErrorState onRetry={() => mutate()} />}
+
+      {/* ── KPI GRID ────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Resolution Rate" value={s?.resolutionRate != null ? `${s.resolutionRate}%` : '—'} loading={isLoading} icon={TrendingUp} tone="emerald"
           sub={s?.resolutionRate == null ? 'nothing resolved yet' : 'of all assigned reports'} />
         <StatCard label="Avg Resolution Time" value={s ? formatMinutes(s.avgResolutionMinutes) : '…'} loading={isLoading} icon={Clock} tone="violet"
@@ -83,12 +95,13 @@ export default function DepartmentPerformance() {
           sub="open / lifetime" />
       </div>
 
-      {error && <ErrorState onRetry={() => mutate()} />}
-
+      {/* ── CHARTS ──────────────────────────────────────────────── */}
       <div className="grid lg:grid-cols-2 gap-6">
         <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
           <CardHeader>
-            <CardTitle as="h2" className="text-lg">Reports by Status</CardTitle>
+            <CardTitle as="h2" className="text-sm flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-teal-600 dark:text-teal-400" /> Reports by Status
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading && !data ? (
@@ -105,7 +118,7 @@ export default function DepartmentPerformance() {
                     </div>
                     <div className="h-2 rounded-full bg-neutral-100 dark:bg-dark-border overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-brand-600 dark:bg-brand-500 transition-all duration-500"
+                        className="h-full rounded-full bg-teal-600 dark:bg-teal-500 transition-all duration-500"
                         style={{ width: `${(row.count / maxStatus) * 100}%` }}
                       />
                     </div>
@@ -118,7 +131,9 @@ export default function DepartmentPerformance() {
 
         <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle as="h2" className="text-lg">New Reports · Last 14 Days</CardTitle>
+            <CardTitle as="h2" className="text-sm flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-teal-600 dark:text-teal-400" /> New Reports · Last 14 Days
+            </CardTitle>
             <span className="text-xs text-neutral-500">created per day</span>
           </CardHeader>
           <CardContent>
@@ -136,7 +151,7 @@ export default function DepartmentPerformance() {
                     <div
                       className={cn(
                         'w-full rounded-t-md transition-all duration-500',
-                        point.created > 0 ? 'bg-brand-600 dark:bg-brand-500' : 'bg-neutral-200 dark:bg-dark-border',
+                        point.created > 0 ? 'bg-teal-600 dark:bg-teal-500' : 'bg-neutral-200 dark:bg-dark-border',
                       )}
                       style={{ height: `${(point.created / maxDay) * 100}%` }}
                     />

@@ -60,21 +60,25 @@ export function navForRole(role?: string | null): WorkspaceNavGroup[] {
     case 'AUTHORITY':
       return [
         {
+          title: 'Overview',
+          items: [
+            { href: '/department/command-center', label: 'Command Center', icon: Gauge },
+            { href: '/department/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          ],
+        },
+        {
           title: 'Operations',
           items: [
-            { href: '/department/command-center', label: 'Command Center', icon: LayoutDashboard },
-            { href: '/department/dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { href: '/department/issues', label: 'Issues', icon: FileText },
             { href: '/department/verification', label: 'Verification', icon: ShieldCheck },
             { href: '/department/escalations', label: 'Escalations', icon: AlertTriangle },
-            { href: '/department/performance', label: 'Performance', icon: BarChart3 },
           ],
         },
         {
           title: 'Intelligence',
           items: [
+            { href: '/department/performance', label: 'Performance', icon: BarChart3 },
             { href: '/map', label: 'Map', icon: MapIcon },
-            { href: '/dashboard/risk', label: 'Risk Intelligence', icon: ShieldAlert },
           ],
         },
         {

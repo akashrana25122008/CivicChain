@@ -48,3 +48,9 @@ next-env.d.ts
 
 # evidence object storage (local backend)
 /private/
+
+# local agent tooling
+/.opencode/
+/hooks/
+/skills/
+/opencode.json

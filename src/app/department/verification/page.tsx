@@ -6,7 +6,6 @@ import { ShieldCheck, CheckCircle2, XCircle, Clock, ExternalLink } from 'lucide-
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { PageHeader } from '@/components/dashboard/PageHeader';
 import { LoadingBlock } from '@/components/dashboard/LoadingBlock';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { ErrorState } from '@/components/dashboard/ErrorState';
@@ -64,14 +63,25 @@ export default function DepartmentVerification() {
   const pending = data?.items.filter((i) => i.verification?.status !== 'VERIFIED') ?? [];
 
   return (
-    <div className="p-6 md:p-8">
-      <PageHeader
-        kicker="Department workspace"
-        title="Evidence Verification"
-        description="Review evidence submitted against your department's reports. Every decision is written to the permanent audit trail and notifies the reporter."
-      />
+    <div className="space-y-6">
+      {/* ── HEADER ──────────────────────────────────────────────── */}
+      <div>
+        <div className="inline-flex items-center gap-2 mb-2">
+          <span className="w-1.5 h-4 rounded-full bg-teal-500" aria-hidden="true" />
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-600 dark:text-teal-400">
+            Department Operations
+          </span>
+        </div>
+        <h1 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-neutral-900 dark:text-white">
+          Evidence Verification
+        </h1>
+        <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 max-w-2xl">
+          Review evidence submitted against your department&apos;s reports. Every decision is written to the permanent audit trail and notifies the reporter.
+        </p>
+      </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-6">
+      {/* ── SUMMARY PILLS ────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-3">
         <SummaryPill icon={Clock} label="Needs review" value={counts?.needsReview ?? '…'} tone="amber" />
         <SummaryPill icon={CheckCircle2} label="Verified" value={counts?.verified ?? '…'} tone="emerald" />
         <SummaryPill icon={XCircle} label="Rejected" value={counts?.rejected ?? '…'} tone="red" />
@@ -79,9 +89,12 @@ export default function DepartmentVerification() {
 
       {error && <ErrorState onRetry={() => mutate()} />}
 
+      {/* ── QUEUE ────────────────────────────────────────────────── */}
       <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle as="h2" className="text-lg">Queue</CardTitle>
+          <CardTitle as="h2" className="text-sm flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-teal-600 dark:text-teal-400" /> Evidence Queue
+          </CardTitle>
           <span className="text-xs text-neutral-500">{pending.length} awaiting review</span>
         </CardHeader>
         <CardContent>
@@ -101,12 +114,12 @@ export default function DepartmentVerification() {
                 return (
                   <div key={item.id} className={cn(
                     'p-4 rounded-xl border bg-neutral-50 dark:bg-dark-bg',
-                    done ? 'border-neutral-200 dark:border-dark-border' : 'border-amber-300 dark:border-amber-800',
+                    done ? 'border-neutral-200 dark:border-dark-border' : 'border-teal-300 dark:border-teal-800',
                   )}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">{item.issuePublicId}</span>
+                          <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">{item.issuePublicId}</span>
                           <Badge variant="status" status={item.issueStatus} size="sm" />
                           {item.verification?.status === 'VERIFIED' && <Badge variant="status" status="resolved" size="sm">Verified</Badge>}
                           {item.verification?.status === 'REJECTED' && <Badge variant="status" status="rejected" size="sm">Rejected</Badge>}
@@ -130,7 +143,7 @@ export default function DepartmentVerification() {
                           value={notes[item.id] ?? ''}
                           onChange={(e) => setNotes((n) => ({ ...n, [item.id]: e.target.value }))}
                           placeholder="Verification note (optional)"
-                          className="flex-1 min-w-44 rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-2.5 py-1.5 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          className="flex-1 min-w-44 rounded-lg border border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-bg-card px-2.5 py-1.5 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                           aria-label="Verification note"
                         />
                         <Button size="sm" variant="outline" className="border-emerald-500 text-emerald-600 dark:text-emerald-400" loading={busy === item.id} onClick={() => decide(item.id, 'VERIFIED')}>
@@ -149,8 +162,9 @@ export default function DepartmentVerification() {
         </CardContent>
       </Card>
 
+      {/* ── FLOAT ────────────────────────────────────────────────── */}
       {float && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-neutral-900 text-white dark:bg-dark-bg-card dark:text-neutral-100 border border-neutral-200 dark:border-dark-border text-sm shadow-lg z-50">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-teal-900 text-white dark:bg-dark-bg-card dark:text-neutral-100 border border-teal-200 dark:border-dark-border text-sm shadow-lg z-50">
           {float}
         </div>
       )}

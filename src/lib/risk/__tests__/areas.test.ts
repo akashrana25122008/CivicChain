@@ -21,6 +21,7 @@ function makeWard(overrides: Partial<WardRiskSummary> = {}): WardRiskSummary {
     riskScore: 72,
     riskLevel: 'HIGH',
     activeIncidents: 6,
+    criticalIssues: 2,
     totalIncidents: 9,
     repeatIssues: 3,
     slaBreaches: 2,

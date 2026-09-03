@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const days = sp.get('days') ? Number(sp.get('days')) : undefined;
     const limit = sp.get('limit') ? Number(sp.get('limit')) : undefined;
 
-    if (days != null && (!Number.isFinite(days) || days <= 0)) {
+    if (days != null && (!Number.isFinite(days) || days < 0)) {
       return NextResponse.json(
         { error: { code: 'INVALID_INPUT', message: 'Invalid days.' } },
         { status: 400 },
