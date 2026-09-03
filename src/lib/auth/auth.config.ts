@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from 'next-auth';
+import { ADMIN_EMAIL } from '@/lib/auth/admin-email';
 
 /**
  * Edge-safe Auth.js configuration shared by the full server config (auth.ts)
@@ -37,11 +38,12 @@ export const authConfig = {
     jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
-        // Auto-assign ADMIN role for the admin email
-        const email = (user as { email?: string | null }).email;
-        token.role = email === 'okboss@gmail.com' ? 'ADMIN' : ((user as { role?: string }).role ?? 'CITIZEN');
+        // Auto-assign ADMIN role for the single configured admin email
+        // (normalized: trimmed + lowercased). All other emails stay CITIZEN.
+        const email = ((user as { email?: string | null }).email)?.trim().toLowerCase() ?? '';
+        token.role = email === ADMIN_EMAIL ? 'ADMIN' : ((user as { role?: string }).role ?? 'CITIZEN');
         token.name = (user as { name?: string | null }).name ?? null;
-        token.email = email ?? null;
+        token.email = email || null;
       }
       return token;
     },

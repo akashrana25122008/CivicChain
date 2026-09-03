@@ -4,9 +4,8 @@ import GoogleProvider from 'next-auth/providers/google';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/db';
 import { authConfig } from '@/lib/auth/auth.config';
+import { ADMIN_EMAIL } from '@/lib/auth/admin-email';
 import { sendMagicLinkEmail } from '@/lib/email/magic-link';
-
-const ADMIN_EMAIL = 'okboss@gmail.com';
 
 /**
  * Authentication adapter.
@@ -59,15 +58,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
     signIn: async ({ user }) => {
-      // Auto-assign ADMIN role for the admin email
-      if (user.email === ADMIN_EMAIL && user.id) {
+      // Auto-assign ADMIN role for the single configured admin email (normalized).
+      const email = user.email?.trim().toLowerCase() ?? '';
+      if (email === ADMIN_EMAIL && email !== '' && user.id) {
         try {
+          // Persist ADMIN on the stored user so it survives beyond the JWT and
+          // any server-side checks that read from the DB. If the row doesn't
+          // exist yet (first-time Google login races the PrismaAdapter user
+          // creation), skip and let the adapter create it; the JWT callback
+          // still stamps ADMIN for this session.
           await prisma.user.update({
             where: { id: user.id },
             data: { role: 'ADMIN' },
           });
         } catch {
-          // User might not exist yet, will be created by PrismaAdapter
+          // The user row may not exist yet; PrismaAdapter will create it and
+          // the JWT callback remains authoritative for the session role.
         }
       }
       return true;

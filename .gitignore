@@ -54,3 +54,7 @@ next-env.d.ts
 /hooks/
 /skills/
 /opencode.json
+
+
+# Local AI tooling
+/.claude/
