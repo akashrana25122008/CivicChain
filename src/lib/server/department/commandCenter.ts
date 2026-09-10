@@ -19,6 +19,7 @@ import { calculateSlaState } from '@/lib/sla/state';
 import { severityToScore, computeAreaRisk, getRiskConfig, type RiskLevel } from '@/lib/risk/scoring';
 import { extractWardFromText } from '@/lib/server/geocode';
 import { sortQueue, type QueueIssueInput, type QueueRank } from '@/lib/department/queue';
+import { computeCivicImpact } from '@/lib/impact/scoring';
 import {
   CATEGORY_LABELS,
   SEVERITY_LABELS,
@@ -81,6 +82,9 @@ export interface CommandCenterMapMarker {
   ward: string | null;
   riskLevel: string | null;
   slaState: SlaState;
+  /** Civic Impact Score (Phase 25) — score + verdict for map markers. */
+  civicImpactScore: number | null;
+  civicImpactLevel: string | null;
 }
 
 export interface CommandCenterQueueItem {
@@ -106,6 +110,9 @@ export interface CommandCenterQueueItem {
   queueScore: number;
   queueLevel: string;
   queueComponents: QueueRank['components'];
+  /** Civic Impact Score (Phase 25) — score + verdict for the officer queue. */
+  civicImpactScore: number | null;
+  civicImpactLevel: string | null;
 }
 
 export interface CommandCenterEscalation {
@@ -290,6 +297,7 @@ function toMapMarker(
   issue: CommandIssueRow,
   wardRisk: Map<string, WardRiskResult>,
   slaState: SlaState,
+  now: Date,
 ): CommandCenterMapMarker {
   const ward = extractWardFromText(issue.location) ?? null;
   return {
@@ -309,6 +317,8 @@ function toMapMarker(
     ward,
     riskLevel: ward ? (wardRisk.get(ward)?.riskLevel ?? null) : null,
     slaState,
+    civicImpactScore: civicImpactOf(issue, now).score,
+    civicImpactLevel: civicImpactOf(issue, now).level,
   };
 }
 
@@ -330,6 +340,25 @@ function resolveSlaState(issue: CommandIssueRow, now: Date): SlaState {
     resolved,
     now,
   }).slaState as SlaState;
+}
+
+/**
+ * Civic Impact Score (Phase 25) — computed deterministically on read from real
+ * report signals (severity, incident member count, unresolved duration). The
+ * population / school–hospital signals aren't stored per issue yet, so they are
+ * shown neutral and flagged unavailable rather than invented.
+ */
+export function civicImpactOf(issue: CommandIssueRow, now: Date): { score: number | null; level: string | null } {
+  if (!issue.severity) return { score: null, level: null };  const reports = Math.max(1, issue.incident?.issues?.length ?? 1);
+  const unresolvedHours = Math.max(0, (now.getTime() - issue.createdAt.getTime()) / 3_600_000);
+  const result = computeCivicImpact({
+    severity: issue.severity,
+    reports,
+    populationImpact: null,
+    locationCriticality: null,
+    unresolvedHours,
+  });
+  return { score: result.score, level: result.verdict };
 }
 
 export interface CommandCenterParams {
@@ -502,13 +531,15 @@ export async function getCommandCenter(
       queueScore: rank.score,
       queueLevel: rank.level,
       queueComponents: rank.components,
+      civicImpactScore: civicImpactOf(issue, now).score,
+      civicImpactLevel: civicImpactOf(issue, now).level,
     };
   });
 
   // --- Map markers (only located issues) ---
   const map = issues
     .filter((i) => i.latitude != null && i.longitude != null)
-    .map((issue) => toMapMarker(issue, wardRiskMap, resolveSlaState(issue, now)));
+    .map((issue) => toMapMarker(issue, wardRiskMap, resolveSlaState(issue, now), now));
 
   // --- Filters for the UI ---
   const wards = Array.from(

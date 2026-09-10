@@ -8,8 +8,9 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { CATEGORY_SELECT_OPTIONS, PRIORITY_LEVEL_LABELS } from '@/lib/issues/mapping';
 import { cn } from '@/lib/utils';
 import type { IssueDetail, DuplicateVerdictItem } from '@/lib/issues/types';
-import { Upload, MapPin, CheckCircle2, ArrowRight, FileText, Loader2, X, Link2, Brain, GitMerge, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Upload, MapPin, CheckCircle2, ArrowRight, FileText, Loader2, X, Link2, Brain, GitMerge, ShieldAlert, AlertTriangle, Gauge, Users } from 'lucide-react';
 import { LocationPicker, type PickedLocation } from '@/components/report/LocationPicker';
+import { CivicImpactScore } from '@/components/dashboard/CivicImpactScore';
 
 type Step = 'form' | 'submitting' | 'result';
 
@@ -319,6 +320,18 @@ export default function ReportPage() {
                       <span className="font-mono text-sm font-bold text-brand-600 dark:text-brand-400">{issue.publicId}</span>
                     </div>
                   </div>
+
+                  {issue.civicImpact && (
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Gauge className="w-4 h-4 text-brand-500" />
+                        <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
+                          AI Civic Intelligence
+                        </h4>
+                      </div>
+                      <CivicImpactScore impact={issue.civicImpact} />
+                    </div>
+                  )}
 
                   {duplicate && duplicate.band !== 'probably_new' && (
                     <div className={cn(

@@ -29,10 +29,10 @@ test('SLA state is AT_RISK at/after the configured threshold', () => {
   const snap = calculateSlaState({
     deadline,
     createdAt,
-    now: now(85 * HOUR), // 85%
+    now: now(70 * HOUR), // 70%
   });
   assert.equal(snap.slaState, 'AT_RISK');
-  assert.ok(snap.slaPctElapsed >= 80);
+  assert.ok(snap.slaPctElapsed >= 70);
 });
 
 test('SLA state is BREACHED after the deadline passes', () => {

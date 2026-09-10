@@ -23,6 +23,8 @@ import {
 } from '../../../generated/prisma/client';
 import type {
   AiAnalysisItem,
+  AuditChainItem,
+  CivicImpactItem,
   EvidenceItem,
   EvidenceQueueItem,
   EvidenceVerification,
@@ -36,6 +38,7 @@ import type {
 } from './types';
 import { computePriorityScore, evidenceConfidenceScore } from '@/lib/server/intelligence/priority/engine';
 import { calculateSlaState } from '@/lib/sla/state';
+import { computeCivicImpact } from '@/lib/impact/scoring';
 
 /** Evidence row optionally loaded with its full verification history. */
 type EvidenceWithVerifications = Evidence & {
@@ -202,6 +205,32 @@ function priorityLevelLabel(issue: SerializerIssue): string | null {
   return PRIORITY_LEVEL_LABELS[issue.priorityLevel] ?? issue.priorityLevel;
 }
 
+/**
+ * Civic Impact Score (Phase 25) — computed deterministically on read from real
+ * report signals (severity, incident member count, unresolved duration, and the
+ * optional population/location signals). No data is invented; unavailable
+ * signals are shown neutral and listed in `unavailable`.
+ */
+function toCivicImpact(issue: SerializerIssue): CivicImpactItem {
+  const reports = Math.max(1, issue.incident?.issues?.length ?? 1);
+  const unresolvedHours = Math.max(0, (Date.now() - issue.createdAt.getTime()) / 3_600_000);
+  const result = computeCivicImpact({
+    severity: issue.severity,
+    reports,
+    populationImpact: null,
+    locationCriticality: null,
+    unresolvedHours,
+  });
+  return {
+    score: result.score,
+    verdict: result.verdict,
+    verdictLabel: result.verdictLabel,
+    factors: result.factors,
+    unavailable: result.unavailable,
+    explanation: result.explanation,
+  };
+}
+
 export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
   const row = serializeIssueListRow(input);
   const { issue, evidence } = input;
@@ -228,8 +257,10 @@ export function serializeIssueDetail(input: IssueRowInput): IssueDetail {
     aiAnalysis: ai ? toAiAnalysisItem(ai) : null,
     incident: issue.incident ? toIncidentSummary(issue.incident) : null,
     priorityBreakdown: toPriorityBreakdown(issue, evidence),
+    civicImpact: toCivicImpact(issue),
     allowedTransitions: input.allowedTransitions ?? [],
     sla: toSlaSnapshot(issue, input.promise),
+    auditChain: toAuditChain(input.auditEvents),
     // Phase 24 — the reporter may verify/dispute a RESOLVED issue (lifecycle
     // handled by verifyIssue), surfaced to the client only for the owner.
     canVerify:
@@ -283,6 +314,28 @@ function toTimeline(auditEvents: AuditEvent[] | undefined): TimelineItem[] {
       date: formatDate(event.createdAt),
       label: TIMELINE_LABELS[event.action] ?? event.action,
       state: index === arr.length - 1 ? 'current' : 'completed',
+    }));
+}
+
+/**
+ * Tamper-evident audit chain (Phase 18). Flattens the issue's ledger rows into
+ * a verifiable sequence: each row advertises its SHA-256 `hash` and the
+ * previous row's hash (`prevHash`), and the client re-checks that continuity.
+ * Ordering is seq-ascending, matching how the ledger was appended.
+ */
+function toAuditChain(auditEvents: AuditEvent[] | undefined): AuditChainItem[] {
+  if (!auditEvents || auditEvents.length === 0) return [];
+  return auditEvents
+    .slice()
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    .map((event) => ({
+      seq: event.seq ?? 0,
+      action: event.action,
+      label: TIMELINE_LABELS[event.action] ?? event.action,
+      createdAt: event.createdAt.toISOString(),
+      timeLabel: formatRelativeTime(event.createdAt),
+      hash: event.hash ?? '',
+      prevHash: event.prevHash ?? null,
     }));
 }
 

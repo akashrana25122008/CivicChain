@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
+import Link from 'next/link';
 import {
   X,
   MapPin,
@@ -9,6 +10,7 @@ import {
   XCircle,
   AlertTriangle,
   Clock,
+  Award,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -31,6 +33,8 @@ interface IssueDrawerProps {
   canUpdateStatus?: boolean;
   canVerify?: boolean;
   canEscalate?: boolean;
+  /** Show the before/after Resolution Workbench entry (staff, IN_PROGRESS only). */
+  canResolve?: boolean;
 }
 
 export function IssueDrawer({
@@ -41,6 +45,7 @@ export function IssueDrawer({
   canUpdateStatus = false,
   canVerify = false,
   canEscalate = false,
+  canResolve = false,
 }: IssueDrawerProps) {
   const open = Boolean(issueId && endpoint);
   const { data, error, isLoading, mutate } = useSWR<{ issue: IssueDetail }>(
@@ -245,6 +250,26 @@ export function IssueDrawer({
                         Apply
                       </Button>
                     </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {canResolve && detail.status === 'IN_PROGRESS' && (
+                <Card variant="outlined" padding="sm" className="bg-teal-50/40 dark:bg-dark-bg/40 border-teal-200 dark:border-teal-800/60">
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-teal-600 dark:text-teal-400" /> Ready to resolve
+                      </p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                        Attach after-evidence and close this report on the Resolution Workbench.
+                      </p>
+                    </div>
+                    <Button size="sm" asChild>
+                      <Link href={`/department/resolve/${detail.id}`}>
+                        <Award className="w-4 h-4 mr-1" /> Resolve
+                      </Link>
+                    </Button>
                   </CardContent>
                 </Card>
               )}

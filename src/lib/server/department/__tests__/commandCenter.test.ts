@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeDepartmentWardRisks, type CommandIssueRow } from '../commandCenter';
+import { computeDepartmentWardRisks, civicImpactOf, type CommandIssueRow } from '../commandCenter';
 
 type Row = CommandIssueRow;
 
@@ -53,4 +53,21 @@ test('computeDepartmentWardRisks: no SLA breach in a fast-resolving ward keeps r
   const loneLow = computeDepartmentWardRisks([a], now);
   // ~30 min old medium issue, no SLA → low-ish risk.
   assert.ok(loneLow[0].riskScore < 50);
+});
+
+test('civicImpactOf: severity drives a higher impact score (real factor contribution)', () => {
+  const critical = civicImpactOf(row({ id: 'a', severity: 'CRITICAL', incident: { issues: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] } }), NOW);
+  const low = civicImpactOf(row({ id: 'b', severity: 'LOW', incident: { issues: [{ id: 'b' }] } }), NOW);
+  assert.ok(critical.score != null, 'critical should have a score');
+  assert.ok(low.score != null, 'low should have a score');
+  // Same age, same missing population/location signals → severity dominates.
+  assert.ok(critical.score > low.score, `expected critical (${critical.score}) > low (${low.score})`);
+  assert.equal(critical.level, 'MEDIUM');
+});
+
+test('civicImpactOf: an issue with no severity yields no score (not invented)', () => {
+  const issue = row({ id: 'a', severity: null });
+  const { score, level } = civicImpactOf(issue, NOW);
+  assert.equal(score, null);
+  assert.equal(level, null);
 });

@@ -70,6 +70,8 @@ interface QueueItem {
   queueScore: number;
   queueLevel: string;
   queueComponents: Array<{ key: string; label: string; contribution: number }>;
+  civicImpactScore: number | null;
+  civicImpactLevel: string | null;
 }
 
 interface Escalation {
@@ -107,6 +109,13 @@ const QUEUE_LEVEL_TONE: Record<string, 'red' | 'amber' | 'emerald' | 'brand' | '
   HIGH: 'amber',
   MEDIUM: 'brand',
   LOW: 'emerald',
+};
+
+const IMPACT_TONE: Record<string, string> = {
+  CRITICAL: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800',
+  HIGH: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+  MEDIUM: 'bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300 border-brand-200 dark:border-brand-800',
+  LOW: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
 };
 
 function slaBadgeFor(sla: string): string {
@@ -171,6 +180,11 @@ export default function DepartmentCommandCenter() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/department/sla-monitor">
+              <Clock className="w-3.5 h-3.5 mr-1" /> SLA Monitor
+            </Link>
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href="/department/dashboard">Dashboard</Link>
           </Button>
@@ -373,6 +387,14 @@ export default function DepartmentCommandCenter() {
                             <Badge variant="status" status={slaBadgeFor(item.slaState)} size="sm">
                               {item.slaState.replace('_', ' ')}
                             </Badge>
+                            {item.civicImpactScore != null && (
+                              <span className={cn(
+                                'inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border',
+                                IMPACT_TONE[item.civicImpactLevel ?? ''] ?? IMPACT_TONE.LOW,
+                              )}>
+                                Impact {item.civicImpactScore}
+                              </span>
+                            )}
                             {item.riskLevel && (
                               <Badge variant="outline" size="sm">{item.riskLevel} risk</Badge>
                             )}
@@ -404,6 +426,11 @@ export default function DepartmentCommandCenter() {
                           )}
                         </div>
                       </div>
+                      {item.civicImpactLevel && (
+                        <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                          {item.civicImpactLevel} civic impact
+                        </p>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -541,6 +568,7 @@ export default function DepartmentCommandCenter() {
         canUpdateStatus
         canVerify
         canEscalate
+        canResolve
       />
     </div>
   );

@@ -16,6 +16,7 @@ import {
   FileText,
   ShieldCheck,
   AlertTriangle,
+  Timer,
   BarChart3,
   Map as MapIcon,
   User,
@@ -59,6 +60,7 @@ const DEPT_PAGE_META: Array<{ prefix: string; meta: WorkspaceMeta }> = [
   { prefix: '/department/issues', meta: { title: 'Issues', description: 'Assigned issue management' } },
   { prefix: '/department/verification', meta: { title: 'Verification', description: 'Evidence verification queue' } },
   { prefix: '/department/escalations', meta: { title: 'Escalations', description: 'Escalation management' } },
+  { prefix: '/department/sla-monitor', meta: { title: 'SLA Monitor', description: 'Promise deadlines & auto-escalation' } },
   { prefix: '/department/performance', meta: { title: 'Performance', description: 'Department performance metrics' } },
   { prefix: '/map', meta: { title: 'Map', description: 'Geographic intelligence' } },
   { prefix: '/dashboard/risk', meta: { title: 'Risk Intelligence', description: 'Predictive risk assessment' } },
@@ -91,6 +93,7 @@ const DEPT_NAV_GROUPS: NavGroup[] = [
       { href: '/department/issues', label: 'Issues', icon: FileText },
       { href: '/department/verification', label: 'Verification', icon: ShieldCheck },
       { href: '/department/escalations', label: 'Escalations', icon: AlertTriangle },
+      { href: '/department/sla-monitor', label: 'SLA Monitor', icon: Timer },
     ],
   },
   {

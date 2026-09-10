@@ -120,6 +120,26 @@ export type PriorityBreakdown = {
   unavailable: string[];
 } | null;
 
+/** A single factor row for the Civic Impact Score (see lib/impact). */
+export type ImpactFactorItem = {
+  key: string;
+  label: string;
+  max: number;
+  earned: number;
+  pct: number;
+  origin: 'computed' | 'unavailable';
+};
+
+/** The Civic Impact Score breakdown surfaced on issue detail. */
+export type CivicImpactItem = {
+  score: number;
+  verdict: string;
+  verdictLabel: string;
+  factors: ImpactFactorItem[];
+  unavailable: string[];
+  explanation: string;
+} | null;
+
 export type DuplicateSignalsItem = {
   geographic: number | null;
   text: number | null;
@@ -146,6 +166,24 @@ export type SlaSnapshotItem = {
   deadline: string | null;
 } | null;
 
+/**
+ * One row of the tamper-evident audit ledger for an issue (Phase 18). Each
+ * audit event carries its SHA-256 hash and the previous row's hash, so the
+ * history of a report cannot be rewritten undetected. No blockchain involved —
+ * this is a simple, verifiable hash chain.
+ */
+export type AuditChainItem = {
+  seq: number;
+  action: string;
+  label: string;
+  createdAt: string;
+  timeLabel: string;
+  /** SHA-256 of this entry, chained onto prevHash. */
+  hash: string;
+  /** Hash of the previous ledger row; null for the chain head. */
+  prevHash: string | null;
+};
+
 export interface IssueDetail extends IssueListItem {
   description: string | null;
   latitude: number | null;
@@ -159,13 +197,24 @@ export interface IssueDetail extends IssueListItem {
   aiAnalysis: AiAnalysisItem;
   incident: IncidentSummary;
   priorityBreakdown: PriorityBreakdown;
+  /**
+   * Civic Impact Score (Phase 25) — the transparency-led differentiator that
+   * ranks complaints by predicted civic impact rather than submission order.
+   */
+  civicImpact: CivicImpactItem;
   /** Lifecycle statuses the current viewer is authorized to request next. */
   allowedTransitions: string[];
   /**
-   * Real, computed Promise/SLA standing (Phase 6). Separate from the persisted
-   * PromiseStatus and Issue lifecycle. Null when no Promise (no authority yet).
+   * Real computed SLA standing (Phase 6). Separate from the persisted
+   * `PromiseStatus` and Issue lifecycle. Null when no Promise (no authority yet).
    */
   sla: SlaSnapshotItem;
+  /**
+   * Tamper-evident audit chain for this report (Phase 18). Every action that
+   * touched the issue is listed here with its SHA-256 hash, chained onto the
+   * previous row. The client verifies continuity to detect any tampering.
+   */
+  auditChain: AuditChainItem[];
   /**
    * Phase 24 — the current viewer is the reporter AND the issue is RESOLVED,
    * so the client may show the Confirm-fixed / Dispute controls (POST /verify).

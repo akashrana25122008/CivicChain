@@ -22,9 +22,12 @@ import {
   GitMerge,
   ThumbsUp,
   MessageSquare,
+  Fingerprint,
 } from 'lucide-react';
 import type { ApiIssueResponse } from '@/lib/issues/types';
 import { IssuesMap } from '@/components/dashboard/IssuesMap';
+import { CivicImpactScore } from '@/components/dashboard/CivicImpactScore';
+import { TamperEvidentLedger } from '@/components/ledger/TamperEvidentLedger';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -458,6 +461,21 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
         </div>
 
         <div className="space-y-6">
+          {/* Civic Impact Score — the transparency differentiator */}
+          {issue.civicImpact && (
+            <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+              <CardHeader>
+                <CardTitle as="h2" className="text-lg flex items-center gap-2">
+                  <Gauge className="w-5 h-5 text-brand-500" />
+                  Civic Impact Score
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CivicImpactScore impact={issue.civicImpact} />
+              </CardContent>
+            </Card>
+          )}
+
           <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
             <CardHeader>
               <CardTitle as="h2" className="text-lg">Activity Timeline</CardTitle>
@@ -501,6 +519,22 @@ export function IssueDetailView({ id, endpoint }: { id: string; endpoint: string
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Tamper-Evident Civic Audit Ledger — Phase 18 hash chain */}
+          <Card variant="elevated" className="bg-white dark:bg-dark-bg-card border border-neutral-200 dark:border-dark-border">
+            <CardHeader>
+              <CardTitle as="h2" className="text-lg flex items-center gap-2">
+                <Fingerprint className="w-5 h-5 text-brand-500" />
+                Tamper-Evident Audit Ledger
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TamperEvidentLedger chain={issue.auditChain ?? []} />
+              <p className="mt-2 text-[11px] text-neutral-400 dark:text-neutral-500 italic">
+                Every action on this report is chained by SHA-256 hash into an append-only record. Any rewrite breaks the chain — no database access can hide it.
+              </p>
             </CardContent>
           </Card>
 
